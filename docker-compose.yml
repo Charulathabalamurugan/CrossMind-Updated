@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.7.4
+    container_name: crossmind-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+
+  crossmind-app:
+    build: .
+    container_name: crossmind-app
+    ports:
+      - "8000:8000"
+      - "8501:8501"
+    environment:
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - QDRANT_IN_MEMORY=False
+      - RXG_NANO_MODEL_NAME=OpceanAI/Yuuki-RxG-nano
+      - USE_LOCAL_SIMULATOR_FALLBACK=True
+    depends_on:
+      - qdrant
+
+volumes:
+  qdrant_storage:
