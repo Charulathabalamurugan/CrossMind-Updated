@@ -86,6 +86,13 @@ class Settings(BaseSettings):
     INGESTION_CACHE_TTL_SECONDS: int = int(os.getenv("INGESTION_CACHE_TTL_SECONDS", "3600"))
     INGESTION_CACHE_MAX_ITEMS: int = int(os.getenv("INGESTION_CACHE_MAX_ITEMS", "10000"))
 
+    # ========== Advanced Reasoning Settings ==========
+    MULTI_AGENT_ENABLED: bool = os.getenv("MULTI_AGENT_ENABLED", "True").lower() == "true"
+    Z3_VALIDATION_ENABLED: bool = os.getenv("Z3_VALIDATION_ENABLED", "True").lower() == "true"
+    DUAL_MEMORY_ENABLED: bool = os.getenv("DUAL_MEMORY_ENABLED", "True").lower() == "true"
+    EXPERIMENTAL_BLUEPRINT_ENABLED: bool = os.getenv("EXPERIMENTAL_BLUEPRINT_ENABLED", "True").lower() == "true"
+    RISK_FEEDBACK_ENABLED: bool = os.getenv("RISK_FEEDBACK_ENABLED", "True").lower() == "true"
+
     class Config:
         env_file = ".env"
 

@@ -17,6 +17,7 @@ from reasoning.neuro_symbolic_pipeline import get_neuro_symbolic_pipeline
 from ingestion.dynamic_connectors import get_dynamic_connectors
 from ingestion.ingestion_cache import get_ingestion_cache
 from ingestion.active_learning import get_active_learning_engine
+from reasoning.risk_feedback import get_risk_feedback_engine
 from app.observability import configure_logging, record_request, prometheus_payload, QUERIES
 
 configure_logging()
@@ -135,6 +136,7 @@ class QueryRequest(BaseModel):
     user_role: str = Field("researcher", example="researcher")
     confidence_proceed_threshold: float = Field(0.75, ge=0.0, le=1.0)
     confidence_investigate_threshold: float = Field(0.50, ge=0.0, le=1.0)
+    session_id: str = Field("default", example="default")
 
     @validator("query")
     def validate_query(cls, q):
@@ -205,7 +207,12 @@ async def ingest_documents(payload: DocumentIngestRequest):
 @app.post("/api/query", dependencies=[Depends(verify_api_key)])
 async def execute_query(req: QueryRequest):
     pipeline = get_neuro_symbolic_pipeline()
-    result = pipeline.process_query(query=req.query, user_role=req.user_role, confidence_thresholds={"proceed": req.confidence_proceed_threshold, "investigate": req.confidence_investigate_threshold})
+    result = pipeline.process_query(
+        query=req.query,
+        user_role=req.user_role,
+        confidence_thresholds={"proceed": req.confidence_proceed_threshold, "investigate": req.confidence_investigate_threshold},
+        session_id=getattr(req, "session_id", "default"),
+    )
     QUERIES.labels(result["confidence_calibration"]["decision"]).inc()
     return result
 
@@ -252,10 +259,67 @@ async def get_metrics():
         "metrics": {
             "AIME_2024": "80.0%",
             "TruthfulQA_MC1": "89.6%",
-            "MMLU_Pro": "65.63%",
+            "MMLU-Pro": "65.63%",
             "MMLU": "85.4%",
             "Training_Cost": "< $15",
             "Memory_Footprint": "~3-4 GB VRAM / ~1.5GB RAM for 1M vectors",
             "Total_End_To_End_Latency": "7-14s"
         }
     }
+
+@app.get("/api/graph/browser")
+async def get_graph_browser_data():
+    pipeline = get_neuro_symbolic_pipeline()
+    kg = pipeline.knowledge_graph
+    nodes = []
+    edges = []
+    node_ids = set()
+    for doc_id, payload in kg.documents.items():
+        nid = f"doc:{doc_id}"
+        if nid not in node_ids:
+            nodes.append({
+                "id": nid,
+                "label": payload.get("title", doc_id),
+                "type": "document",
+                "domain": payload.get("domain", "general"),
+            })
+            node_ids.add(nid)
+    for entity, doc_ids in kg.entity_documents.items():
+        eid = f"entity:{entity}"
+        if eid not in node_ids:
+            nodes.append({
+                "id": eid,
+                "label": entity,
+                "type": "entity",
+            })
+            node_ids.add(eid)
+        for doc_id in doc_ids:
+            edges.append({
+                "source": f"doc:{doc_id}",
+                "target": eid,
+                "relation": "mentions",
+            })
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+    }
+
+@app.get("/api/memory/session/{session_id}")
+async def get_session_memory(session_id: str):
+    pipeline = get_neuro_symbolic_pipeline()
+    memory = pipeline.dual_memory.get_session_context(session_id)
+    return memory
+
+@app.post("/api/feedback/risk")
+async def submit_risk_feedback(payload: Dict[str, Any]):
+    engine = get_risk_feedback_engine()
+    entry = engine.submit_feedback(
+        query=payload.get("query", ""),
+        doc_id=payload.get("doc_id", ""),
+        score=float(payload.get("score", 0.0)),
+        user_role=payload.get("user_role", "researcher"),
+        evidence_domains=payload.get("evidence_domains", []),
+    )
+    return {"status": "recorded", "entry": entry}

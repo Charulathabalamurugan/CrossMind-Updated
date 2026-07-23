@@ -95,7 +95,7 @@ st.sidebar.markdown("""
 st.markdown('<div class="main-title">🧠 CrossMind: Neuro-Symbolic Scientific Discovery Engine</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">Powered by <b>Yuuki RxG Nano (1.5B)</b> & <b>Qdrant Vector Database</b> | <span class="security-badge">🔒 Input Sanitized</span></div>', unsafe_allow_html=True)
 
-tabs = st.tabs(["🔍 Cross-Domain Reasoning", "📊 System Benchmark & Performance", "📥 Document Ingestion"])
+tabs = st.tabs(["🔍 Cross-Domain Reasoning", "📊 System Benchmark & Performance", "📥 Document Ingestion", "🕸️ Graph Browser"])
 
 def get_headers():
     """Build request headers with optional API key."""
@@ -294,6 +294,57 @@ with tabs[0]:
                         else:
                             st.write("No memory profile data available.")
 
+                st.markdown("---")
+                col_z3, col_collab = st.columns(2)
+
+                with col_z3:
+                    st.markdown("### 🔬 Evidence Attribution & Formal Validation")
+                    z3_data = result.get("z3_formal_validation")
+                    if z3_data:
+                        st.metric("Z3 Validation Score", f"{z3_data.get('validation_score', 0)}%")
+                        st.caption(f"Execution mode: `{z3_data.get('execution_mode', 'unknown')}`")
+                        for rule in z3_data.get("rule_checks", []):
+                            icon = "✅" if rule.get("passed") else "⚠️"
+                            st.write(f"{icon} **{rule.get('rule_id')}**: {rule.get('details')}")
+                    else:
+                        st.write("Z3 validation not available for this query.")
+
+                    att = result.get("evidence_attribution")
+                    if att:
+                        st.markdown("**Evidence Attribution Coverage**")
+                        st.progress(att.get("overall_attribution_coverage", 0.0))
+                        st.caption(f"Supported claims: {att.get('supported_claims', 0)}/{att.get('total_claims', 0)} (coverage {att.get('overall_attribution_coverage', 0.0):.0%})")
+                    else:
+                        st.write("Evidence attribution not available.")
+
+                with col_collab:
+                    st.markdown("### 🤝 Collaboration Recommendations")
+                    collab = result.get("collaboration_recommendations")
+                    if collab and collab.get("recommendations"):
+                        for rec in collab.get("recommendations", [])[:5]:
+                            st.write(f"**{rec.get('recommended_role')}** ({rec.get('primary_domain')}) — strength `{rec.get('collaboration_strength')}`")
+                            st.caption(rec.get("rationale"))
+                    else:
+                        st.write("No collaboration recommendations generated.")
+
+                st.markdown("---")
+                st.markdown("### 🧪 Experimental Blueprint")
+                blueprint = result.get("experimental_blueprint")
+                if blueprint and blueprint.get("status") != "disabled":
+                    st.markdown(f"**Objective:** {blueprint.get('primary_objective')}")
+                    st.markdown(f"**Timeline:** {blueprint.get('timeline_estimate')} | **Confidence:** {blueprint.get('confidence', 'unknown').title()}")
+                    with st.expander("Methodology Steps"):
+                        for step in blueprint.get("methodology", []):
+                            st.markdown(f"- {step}")
+                    with st.expander("Controls & Materials"):
+                        st.write("**Controls:**", blueprint.get("controls", []))
+                        st.write("**Materials:**", blueprint.get("materials", []))
+                    with st.expander("Expected Outcomes & Risks"):
+                        st.write("**Outcomes:**", blueprint.get("expected_outcomes", []))
+                        st.write("**Risks:**", blueprint.get("risk_mitigations", []))
+                else:
+                    st.write("Experimental blueprint not generated.")
+
                 # Visualizing Cross-Domain Relationship Graph
                 st.markdown("---")
                 st.markdown("### 🕸️ Cross-Domain Knowledge Network Graph")
@@ -425,3 +476,56 @@ with tabs[2]:
                 st.error(error)
             else:
                 st.success(f"Document successfully ingested into Qdrant! ID: {result['inserted_ids'][0]}")
+
+# ========== Tab 4: Graph Browser ==========
+with tabs[3]:
+    st.markdown("### 🕸️ Interactive Knowledge Graph Browser")
+    st.caption("Visualize documents, entities, and cross-domain bridges extracted from the ingested corpus.")
+
+    if st.button("Load Knowledge Graph", use_container_width=True):
+        graph_data, graph_error = call_api("/api/graph/browser", method="GET", data={}, timeout=30)
+        if graph_error:
+            st.error(graph_error)
+        elif graph_data:
+            nodes = graph_data.get("nodes", [])
+            edges = graph_data.get("edges", [])
+            st.success(f"Loaded {graph_data.get('node_count', 0)} nodes and {graph_data.get('edge_count', 0)} edges.")
+
+            import networkx as nx
+            import plotly.graph_objects as go
+            import math
+
+            G = nx.Graph()
+            for node in nodes:
+                G.add_node(node["id"], label=node.get("label", node["id"]), type=node.get("type", "unknown"), domain=node.get("domain", "general"))
+            for edge in edges:
+                G.add_edge(edge["source"], edge["target"], relation=edge.get("relation", ""))
+
+            if G.number_of_nodes() > 0:
+                try:
+                    pos = nx.spring_layout(G, seed=42)
+                except Exception:
+                    pos = {node["id"]: (math.cos(2 * math.pi * i / len(nodes)), math.sin(2 * math.pi * i / len(nodes))) for i, node in enumerate(nodes)}
+
+                edge_x, edge_y = [], []
+                for edge in G.edges():
+                    x0, y0 = pos[edge[0]]
+                    x1, y1 = pos[edge[1]]
+                    edge_x += [x0, x1, None]
+                    edge_y += [y0, y1, None]
+
+                node_x = [pos[n][0] for n in G.nodes()]
+                node_y = [pos[n][1] for n in G.nodes()]
+                node_text = [G.nodes[n].get("label", n) for n in G.nodes()]
+                node_color = ["#EF4444" if G.nodes[n].get("type") == "document" else "#10B981" for n in G.nodes()]
+                node_size = [18 if G.nodes[n].get("type") == "document" else 12 for n in G.nodes()]
+
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=edge_x, y=edge_y, mode="lines", line=dict(color="#94A3B8", width=1), hoverinfo="none"))
+                fig.add_trace(go.Scatter(x=node_x, y=node_y, mode="markers+text", text=node_text, textposition="top center", marker=dict(size=node_size, color=node_color), hovertemplate="%{text}<extra></extra>"))
+                fig.update_layout(height=600, showlegend=False, xaxis=dict(visible=False), yaxis=dict(visible=False), margin=dict(l=10, r=10, t=30, b=10))
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Graph is empty. Ingest some documents first.")
+        else:
+            st.info("No graph data returned.")

@@ -74,6 +74,7 @@ class IngestionPipeline:
             if not doc.get("content_hash"):
                 doc["content_hash"] = cache_key
             deduped.append(doc)
+            self.cache.set(cache_key, True)
 
         texts = []
         for doc in deduped:

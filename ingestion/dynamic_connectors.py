@@ -27,7 +27,7 @@ class BaseConnector:
                 try:
                     items = self.fetch()
                     if items:
-                        callback(items, source=self.name)
+                        callback(items)
                 except Exception as exc:
                     logger.warning(f"Connector {self.name} fetch error: {exc}")
                 time.sleep(settings.CONTINUOUS_INGESTION_INTERVAL)
@@ -87,10 +87,10 @@ class ApiConnector(BaseConnector):
                 return []
             self._last_state = state
             if isinstance(data, list):
-                return data
+                return [{**item, "source": self.name} for item in data]
             if isinstance(data, dict) and "items" in data:
-                return data["items"]
-            return [data]
+                return [{**item, "source": self.name} for item in data["items"]]
+            return [{**data, "source": self.name}]
         except Exception as exc:
             logger.warning(f"ApiConnector {self.name} fetch error: {exc}")
             return []

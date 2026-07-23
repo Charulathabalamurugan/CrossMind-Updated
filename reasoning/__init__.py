@@ -1,1 +1,10 @@
 # Phase 3: Neuro-Symbolic Reasoning Package
+from reasoning.neuro_symbolic_pipeline import get_neuro_symbolic_pipeline
+from reasoning.multi_agent import get_multi_agent_orchestrator
+from reasoning.hybrid_rag_kg import get_hybrid_rag_kg
+from reasoning.dual_memory import get_dual_memory
+from reasoning.z3_validator import get_z3_validator
+from reasoning.experimental_blueprint import get_experimental_blueprint_generator
+from reasoning.evidence_attribution import get_evidence_attributor
+from reasoning.risk_feedback import get_risk_feedback_engine
+from reasoning.collaboration_recommender import get_collaboration_recommender

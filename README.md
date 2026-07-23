@@ -147,13 +147,21 @@ CrossMind-Updated/
 │   ├── continuous_ingestion.py  # Background ingestion worker
 │   ├── ingestion_cache.py   # TTL cache with deduplication
 ├── reasoning/
-│   ├── neuro_symbolic_pipeline.py  # Main orchestrator
+│   ├── neuro_symbolic_pipeline.py  # Main orchestrator with 9 advanced capabilities
 │   ├── symbolic_filter.py            # Aho-Corasick pre/post validation
 │   ├── rxg_nano_agent.py             # Yuuki RxG Nano agent + simulator
 │   ├── knowledge_graph.py            # GraphRAG + discovery scoring
 │   ├── abductive_engine.py           # Causal explanation engine
 │   ├── memory_service.py             # MirrorMind memory framework
-│   └── traceability.py               # Evidence passage selection
+│   ├── traceability.py               # Evidence passage selection
+│   ├── multi_agent.py                # Parallel domain agent orchestration
+│   ├── hybrid_rag_kg.py              # Structural + semantic hybrid retrieval
+│   ├── dual_memory.py                # Session + long-term dual memory
+│   ├── z3_validator.py               # Formal SMT solver validation
+│   ├── experimental_blueprint.py     # Actionable experimental design
+│   ├── evidence_attribution.py       # Full claim-to-evidence traceability
+│   ├── risk_feedback.py              # Risk-controlled active learning
+│   └── collaboration_recommender.py  # Researcher team recommendations
 ├── vector_store/
 │   └── qdrant_engine.py     # Qdrant HNSW + BM25 hybrid search + RBAC
 ├── comprehensive_test.py    # 48-test API & pipeline suite

@@ -19,9 +19,17 @@ class ContinuousIngestionWorker:
     def _process_batch(self, items: List[Dict[str, Any]]):
         if not items:
             return
+        documents: List[Dict[str, Any]] = []
+        for item in items:
+            if isinstance(item, dict) and "payload" in item:
+                documents.append(item["payload"])
+            else:
+                documents.append(item)
+        if not documents:
+            return
         for attempt in range(1, self.max_retries + 1):
             try:
-                inserted = self.pipeline.ingest_documents(items[: self.batch_size])
+                inserted = self.pipeline.ingest_documents(documents[: self.batch_size])
                 logger.info(f"Continuous ingestion batch processed: {len(inserted)} docs (attempt {attempt})")
                 if self.callback:
                     self.callback(inserted)
