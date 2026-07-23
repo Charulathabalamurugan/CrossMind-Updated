@@ -45,7 +45,9 @@ Graph expansion stays within the retrieved, access-controlled evidence set; it n
 │  • FastAPI async endpoints for concurrent document uploads             │
 │  • DSKE (Document-Symbolic Knowledge Embedding) — 64-dim vectors       │
 │    (deterministic feature hashing, no GPU, ~40× faster than ST)        │
-│  • Parallel writes to Qdrant + BM25 keyword index                      │
+│  • Dynamic connectors (file, API, webhook) with auto-discovery         │
+│  • Deduplication cache layer with TTL                                   │
+│  • Continuous ingestion worker with retry backoff                       │
 │  • Knowledge graph indexing from document tags & entities              │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
@@ -139,8 +141,11 @@ CrossMind-Updated/
 │   └── app.py               # Streamlit UI (reasoning, benchmarks, ingestion)
 ├── ingestion/
 │   ├── embedding.py         # DSKE embedder
-│   ├── pipeline.py          # Document ingestion pipeline
-│   └── seed_data.py         # Default scientific knowledge base (6 papers)
+│   ├── pipeline.py          # Document ingestion pipeline with auto-init
+│   ├── dynamic_connectors.py  # File / API / Webhook connectors
+│   ├── active_learning.py   # Feedback-driven retraining
+│   ├── continuous_ingestion.py  # Background ingestion worker
+│   ├── ingestion_cache.py   # TTL cache with deduplication
 ├── reasoning/
 │   ├── neuro_symbolic_pipeline.py  # Main orchestrator
 │   ├── symbolic_filter.py            # Aho-Corasick pre/post validation
@@ -298,7 +303,7 @@ USE_LOCAL_SIMULATOR_FALLBACK=False
 
 | Phase | Time Complexity | Space Complexity | Notes |
 | :--- | :--- | :--- | :--- |
-| **Phase 1: Ingestion** | O(words) per doc | ~1–5 KB/chunk | DSKE hashing, no model load |
+| **Phase 1: Ingestion** | O(words) per doc | ~1–5 KB/chunk | DSKE hashing, cache-aware, continuous worker |
 | **Phase 2: Qdrant HNSW** | O(log N) ~5–15 ms | ~1.5 GB (1M vectors) | + BM25 RRF fusion |
 | **Phase 3a: Pre-filter** | O(N + M) < 50 ms | < 1 MB | Aho-Corasick automaton |
 | **Phase 3b: RxG Nano** | ~2–4 s | ~3–4 GB VRAM (live) | Simulator: no GPU |

@@ -67,6 +67,25 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL_NAME: str = os.getenv("EMBEDDING_MODEL_NAME", "nomic-ai/nomic-embed-text-v1.5")
     EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "64"))
 
+    # ========== Dynamic Ingestion Settings ==========
+    DYNAMIC_CONNECTORS_ENABLED: bool = os.getenv("DYNAMIC_CONNECTORS_ENABLED", "True").lower() == "true"
+    DYNAMIC_CONNECTOR_SOURCES: str = os.getenv("DYNAMIC_CONNECTOR_SOURCES", "file,api,webhook")
+    AUTO_INIT_ON_STARTUP: bool = os.getenv("AUTO_INIT_ON_STARTUP", "True").lower() == "true"
+
+    # ========== Continuous Ingestion Settings ==========
+    CONTINUOUS_INGESTION_INTERVAL: int = int(os.getenv("CONTINUOUS_INGESTION_INTERVAL", "300"))
+    INGESTION_BATCH_SIZE: int = int(os.getenv("INGESTION_BATCH_SIZE", "50"))
+    INGESTION_MAX_RETRIES: int = int(os.getenv("INGESTION_MAX_RETRIES", "3"))
+
+    # ========== Active Learning Settings ==========
+    ACTIVE_LEARNING_ENABLED: bool = os.getenv("ACTIVE_LEARNING_ENABLED", "True").lower() == "true"
+    ACTIVE_LEARNING_MIN_FEEDBACK: int = int(os.getenv("ACTIVE_LEARNING_MIN_FEEDBACK", "10"))
+    ACTIVE_LEARNING_RETRAIN_INTERVAL: int = int(os.getenv("ACTIVE_LEARNING_RETRAIN_INTERVAL", "3600"))
+
+    # ========== Ingestion Cache Settings ==========
+    INGESTION_CACHE_TTL_SECONDS: int = int(os.getenv("INGESTION_CACHE_TTL_SECONDS", "3600"))
+    INGESTION_CACHE_MAX_ITEMS: int = int(os.getenv("INGESTION_CACHE_MAX_ITEMS", "10000"))
+
     class Config:
         env_file = ".env"
 

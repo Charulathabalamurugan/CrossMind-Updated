@@ -13,8 +13,10 @@ from typing import List, Dict, Any, Optional
 
 from config import settings
 from ingestion.pipeline import get_ingestion_pipeline
-from ingestion.seed_data import seed_default_knowledge
 from reasoning.neuro_symbolic_pipeline import get_neuro_symbolic_pipeline
+from ingestion.dynamic_connectors import get_dynamic_connectors
+from ingestion.ingestion_cache import get_ingestion_cache
+from ingestion.active_learning import get_active_learning_engine
 from app.observability import configure_logging, record_request, prometheus_payload, QUERIES
 
 configure_logging()
@@ -156,15 +158,19 @@ class QueryRequest(BaseModel):
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("Initializing CrossMind and seeding default scientific knowledge...")
+    logger.info("Initializing CrossMind dynamic ingestion system...")
     logger.info(f"API Key Auth: {'Enabled' if settings.API_KEY else 'Disabled (dev mode)'}")
     if not settings.API_KEY:
         logger.info(f"Auto-generated dev API Key: {settings.effective_api_key}")
     try:
-        seed_default_knowledge()
-        logger.info("Default scientific knowledge seeded successfully.")
+        pipeline = get_ingestion_pipeline()
+        pipeline.auto_init()
+        get_dynamic_connectors()
+        get_ingestion_cache()
+        get_active_learning_engine()
+        logger.info("Startup initialization complete.")
     except Exception as e:
-        logger.error(f"Error seeding default knowledge: {e}")
+        logger.error(f"Error during startup initialization: {e}")
 
 @app.get("/")
 async def read_root():
