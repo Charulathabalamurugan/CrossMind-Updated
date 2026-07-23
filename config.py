@@ -32,7 +32,7 @@ class Settings(BaseSettings):
         return self._generated_key
 
     # CORS allowed origins (comma-separated in env, parsed to list)
-    ALLOWED_ORIGINS: str = os.getenv("ALLOWED_ORIGINS", "http://localhost:8501,http://127.0.0.1:8501")
+    ALLOWED_ORIGINS: str = os.getenv("ALLOWED_ORIGINS", "http://localhost:8501,http://127.0.0.1:8501,http://localhost:8000,http://127.0.0.1:8000")
 
     @property
     def allowed_origins_list(self) -> list:

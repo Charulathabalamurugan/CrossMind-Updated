@@ -128,20 +128,29 @@ def call_api(endpoint: str, method: str = "POST", data: dict = None, timeout: in
 with tabs[0]:
     col_input, col_sample = st.columns([3, 1])
 
+    # Initialize session state for query input
+    if "query_input" not in st.session_state:
+        st.session_state.query_input = "Find cross-domain links between Alzheimer's biomarkers and nanomaterials"
+
+    def load_sample_query():
+        st.session_state.query_input = st.session_state.sample_radio
+
     with col_sample:
         st.markdown("**Quick Preset Queries:**")
-        sample_query = st.radio(
+        st.radio(
             "Select sample:",
             [
                 "Find cross-domain links between Alzheimer's biomarkers and nanomaterials",
                 "Buscar conexiones entre el peptido Abeta42 y nanoparticulas lipidicas para la barrera hematoencefalica",
                 "How do biomimetic nanocarriers deliver microRNA to regulate BACE1 microglial inflammation?"
             ],
-            index=0
+            index=0,
+            key="sample_radio",
+            on_change=load_sample_query
         )
 
     with col_input:
-        query_input = st.text_area("Enter your scientific hypothesis query:", value=sample_query, height=100)
+        query_input = st.text_area("Enter your scientific hypothesis query:", key="query_input", height=100)
         run_button = st.button("🚀 Run CrossMind Workflow", type="primary", use_container_width=True)
 
     if run_button and query_input:
