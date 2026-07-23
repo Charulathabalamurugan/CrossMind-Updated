@@ -41,7 +41,8 @@ class YuukiRxGNanoAgent:
         self,
         query: str,
         retrieved_evidence: List[Dict[str, Any]],
-        filter_metadata: Dict[str, Any]
+        filter_metadata: Dict[str, Any],
+        graph_context: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
         """
         Executes neuro-reasoning over user query and retrieved Qdrant evidence.
@@ -50,7 +51,7 @@ class YuukiRxGNanoAgent:
         # Try real OpenAI / vLLM API server if available
         if HTTPX_AVAILABLE:
             try:
-                prompt_content = self._build_prompt(query, retrieved_evidence, filter_metadata)
+                prompt_content = self._build_prompt(query, retrieved_evidence, filter_metadata, graph_context)
                 response = httpx.post(
                     f"{self.api_base}/chat/completions",
                     json={
@@ -78,12 +79,13 @@ class YuukiRxGNanoAgent:
         self,
         query: str,
         retrieved_evidence: List[Dict[str, Any]],
-        filter_metadata: Dict[str, Any]
+        filter_metadata: Dict[str, Any],
+        graph_context: Dict[str, Any] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Generates progressive streaming SSE chunks including <think> tokens, tool calls, and final hypothesis.
         """
-        result = self.reason_and_synthesize(query, retrieved_evidence, filter_metadata)
+        result = self.reason_and_synthesize(query, retrieved_evidence, filter_metadata, graph_context)
 
         # Stream stage 1: Pre-filter report
         yield {
@@ -92,14 +94,26 @@ class YuukiRxGNanoAgent:
             "filter_metadata": filter_metadata
         }
 
-        # Stream stage 2: Thinking blocks chunk by chunk
+        # Stream stage 2: Thinking blocks word-by-word for a premium, smooth typing effect
         think_text = result["think_block"]
-        think_chunks = think_text.split("\n")
-        for chunk in think_chunks:
-            if chunk.strip():
+        think_words = []
+        for line in think_text.split("\n"):
+            line_words = line.split(" ")
+            for i, w in enumerate(line_words):
+                if w or i < len(line_words) - 1:
+                    think_words.append(w)
+            think_words.append("\n")
+            
+        for word in think_words:
+            if word == "\n":
                 yield {
                     "stage": "thinking",
-                    "delta": chunk + "\n"
+                    "delta": "\n"
+                }
+            else:
+                yield {
+                    "stage": "thinking",
+                    "delta": word + " "
                 }
 
         # Stream stage 3: Tool call execution logs
@@ -109,19 +123,43 @@ class YuukiRxGNanoAgent:
                 "delta": f"<tool_call> {tool} </tool_call>\n"
             }
 
-        # Stream stage 4: Final synthesized output
-        yield {
-            "stage": "hypothesis_synthesis",
-            "delta": result["output_text"],
-            "structured_result": result
-        }
+        # Stream stage 4: Final synthesized output word-by-word for typing effect
+        hyp_text = result["output_text"]
+        hyp_words = []
+        for line in hyp_text.split("\n"):
+            line_words = line.split(" ")
+            for i, w in enumerate(line_words):
+                if w or i < len(line_words) - 1:
+                    hyp_words.append(w)
+            hyp_words.append("\n")
+            
+        for idx, word in enumerate(hyp_words):
+            is_last = (idx == len(hyp_words) - 1)
+            if word == "\n":
+                delta_payload = {
+                    "stage": "hypothesis_synthesis",
+                    "delta": "\n"
+                }
+            else:
+                delta_payload = {
+                    "stage": "hypothesis_synthesis",
+                    "delta": word + " "
+                }
+            if is_last:
+                delta_payload["structured_result"] = result
+            yield delta_payload
 
-    def _build_prompt(self, query: str, evidence: List[Dict[str, Any]], filter_meta: Dict[str, Any]) -> str:
+    def _build_prompt(self, query: str, evidence: List[Dict[str, Any]], filter_meta: Dict[str, Any], graph_context: Dict[str, Any] = None) -> str:
         evidence_str = "\n".join([
             f"[{ev['id']}] Title: {ev['payload'].get('title')} | Domain: {ev['payload'].get('domain')} | Text: {ev['payload'].get('content')}"
             for ev in evidence
         ])
-        return f"User Query: {query}\nDetected Language: {filter_meta.get('language')}\nRetrieved Literature Evidence:\n{evidence_str}\n\nGenerate your <think> reasoning steps followed by the structured cross-domain hypothesis."
+        paths = (graph_context or {}).get("multi_hop_paths", [])[:5]
+        graph_str = "\n".join(" -> ".join(path["path"]) for path in paths) or "No supported multi-hop path found."
+        
+        memory_str = f"\nPast Memory Context:\n{filter_meta.get('memory_context')}\n" if filter_meta.get("memory_context") else ""
+        
+        return f"User Query: {query}\nDetected Language: {filter_meta.get('language')}{memory_str}\nRetrieved Literature Evidence:\n{evidence_str}\n\nGraphRAG multi-hop paths (use only as supported context):\n{graph_str}\n\nGenerate your <think> reasoning steps followed by the structured cross-domain hypothesis."
 
     def _parse_agent_output(self, raw_text: str, retrieved_evidence: List[Dict[str, Any]]) -> Dict[str, Any]:
         think_match = re.search(r"<think>(.*?)</think>", raw_text, re.DOTALL)
@@ -154,10 +192,26 @@ class YuukiRxGNanoAgent:
         with native <think> protocol and tool calls.
         """
         is_spanish = filter_metadata.get("language") == "spanish"
-        entities = filter_metadata.get("extracted_entities", ["Alzheimer's", "nanomaterials"])
+        entities = filter_metadata.get("extracted_entities", [])
 
         evidence_titles = [ev.get("payload", {}).get("title", "") for ev in retrieved_evidence]
         evidence_ids = [ev.get("id") for ev in retrieved_evidence]
+
+        # Unknown queries must not inherit the demo's Alzheimer-specific claim.
+        # Return an explicitly bounded, evidence-led response instead.
+        if not entities:
+            titles = ", ".join(title for title in evidence_titles[:3] if title) or "no sufficiently related documents"
+            return {
+                "model": "OpceanAI/Yuuki-RxG-nano (1.5B)",
+                "execution_mode": "Fallback evidence-bound mode",
+                "think_block": f"No known ontology entities were detected in the query. Retrieved context was assessed for possible semantic support: {titles}. A domain-specific hypothesis is withheld until more targeted evidence is available.",
+                "tool_calls": [f"Semantic search in Qdrant for: '{query}'"],
+                "output_text": "### Evidence-limited result\n\nThe query does not yet map to CrossMind's scientific ontology with enough specificity to make a grounded cross-domain claim. Refine the question with a biological target, material, mechanism, or domain, or ingest supporting literature before making an experimental decision.",
+                "hypothesis": "Evidence is insufficient for a grounded domain-specific hypothesis.",
+                "cited_evidence_ids": evidence_ids,
+                "confidence_score": 0.35,
+                "unknown_query": True,
+            }
 
         if is_spanish:
             think_block = (
@@ -206,7 +260,7 @@ class YuukiRxGNanoAgent:
 
         return {
             "model": "OpceanAI/Yuuki-RxG-nano (1.5B)",
-            "execution_mode": "Unified Hybrid Engine (Simultaneous Online API + Local Embedded Model)",
+            "execution_mode": "Unified Hybrid Engine (4-bit Quantized)",
             "think_block": think_block,
             "tool_calls": tool_calls,
             "output_text": output_text,

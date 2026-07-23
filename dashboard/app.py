@@ -5,6 +5,8 @@ import re
 import plotly.express as px
 import plotly.graph_objects as go
 import time
+import math
+import os
 
 st.set_page_config(
     page_title="CrossMind | Yuuki RxG Nano (1.5B)",
@@ -69,11 +71,14 @@ st.markdown("""
 # ========== Sidebar Configuration ==========
 st.sidebar.markdown(f'<span class="security-badge">🔒 RBAC Enabled</span>', unsafe_allow_html=True)
 
-API_BASE = st.sidebar.text_input("Backend API Base URL", value="http://localhost:8000")
+API_BASE = st.sidebar.text_input("Backend API Base URL", value=os.getenv("API_BASE", "http://localhost:8000"))
 API_KEY = st.sidebar.text_input("API Key (optional)", value="", type="password",
                                  help="Set in config.py or .env via API_KEY variable. Leave blank for dev mode.")
 
 user_role = st.sidebar.selectbox("User Role (RBAC)", ["researcher", "admin", "public"], index=0)
+st.sidebar.markdown("### Confidence policy")
+proceed_threshold = st.sidebar.slider("Proceed threshold", min_value=0.50, max_value=0.95, value=0.75, step=0.05)
+investigate_threshold = st.sidebar.slider("Investigate threshold", min_value=0.10, max_value=proceed_threshold, value=min(0.50, proceed_threshold), step=0.05)
 
 st.sidebar.markdown("---")
 st.sidebar.success("⚡ Dual-Engine Status: Unified Hybrid Mode (Online Server + Offline In-Process Active)")
@@ -124,6 +129,30 @@ def call_api(endpoint: str, method: str = "POST", data: dict = None, timeout: in
     except Exception as e:
         return None, f"Request failed: {str(e)}"
 
+def graph_rag_figure(graph: dict, selected_path: dict = None):
+    """Render the API-returned evidence graph instead of a static illustration."""
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+    if not nodes:
+        return None
+    positions = {node["id"]: (math.cos(2 * math.pi * i / len(nodes)), math.sin(2 * math.pi * i / len(nodes))) for i, node in enumerate(nodes)}
+    selected_ids = set((selected_path or {}).get("path", []))
+    line_x, line_y = [], []
+    for edge in edges:
+        source, target = positions.get(edge["source"]), positions.get(edge["target"])
+        if source and target:
+            line_x += [source[0], target[0], None]
+            line_y += [source[1], target[1], None]
+    fig = go.Figure(go.Scatter(x=line_x, y=line_y, mode="lines", line=dict(color="#94A3B8", width=1), hoverinfo="none"))
+    fig.add_trace(go.Scatter(
+        x=[positions[node["id"]][0] for node in nodes], y=[positions[node["id"]][1] for node in nodes],
+        mode="markers+text", text=[node["label"] for node in nodes], textposition="top center",
+        marker=dict(size=[25 if node["id"] in selected_ids else 15 for node in nodes], color=["#EF4444" if node["id"] in selected_ids else "#2563EB" if node["type"] == "document" else "#10B981" for node in nodes]),
+        hovertemplate="%{text}<extra></extra>"
+    ))
+    fig.update_layout(height=460, showlegend=False, xaxis=dict(visible=False), yaxis=dict(visible=False), margin=dict(l=10, r=10, t=30, b=10))
+    return fig
+
 # ========== Tab 1: Cross-Domain Reasoning ==========
 with tabs[0]:
     col_input, col_sample = st.columns([3, 1])
@@ -168,7 +197,7 @@ with tabs[0]:
         output_container = st.container()
 
         try:
-            result, error = call_api("/api/query", data={"query": safe_query, "user_role": user_role})
+            result, error = call_api("/api/query", data={"query": safe_query, "user_role": user_role, "confidence_proceed_threshold": proceed_threshold, "confidence_investigate_threshold": investigate_threshold})
 
             if error:
                 st.error(error)
@@ -188,6 +217,13 @@ with tabs[0]:
                     for rule in result['post_validation']['rule_checks']:
                         icon = "✅" if rule['passed'] else "⚠️"
                         st.write(f"{icon} **{rule['rule_id']}**: {rule['details']}")
+
+                discovery = result.get("cross_domain_scoring", {})
+                calibration = result.get("confidence_calibration", {})
+                score_col, confidence_col, decision_col = st.columns(3)
+                score_col.metric("Discovery Strength", f"{discovery.get('overall_score', 0)}%", discovery.get("rating", "unknown").title())
+                confidence_col.metric("Calibrated Confidence", f"{calibration.get('calibrated_confidence', 0) * 100:.1f}%")
+                decision_col.metric("Decision", calibration.get("decision", "pending").replace("_", " ").title())
 
                 # Think Block - content from model is safe scientific text, rendering with safe styling
                 with think_container:
@@ -209,12 +245,54 @@ with tabs[0]:
                         st.markdown(f"**[{idx}] {title}** (Score: `{ev['score']:.4f}`) - Domain: `{domain}`")
                         st.caption(content)
                         st.markdown("---")
+                    st.markdown("#### Exact supporting passages")
+                    for trace in result.get("evidence_traceability", []):
+                        terms = ", ".join(trace.get("matched_query_terms", [])) or "semantic support"
+                        st.markdown(f"**{trace['title']}** — matched: `{terms}`")
+                        st.info(trace.get("passage", "No passage available."))
 
-                # Output Hypothesis - safe scientific text
-                with output_container:
+                    # Output Hypothesis - safe scientific text
                     st.markdown("---")
                     st.markdown("### 📜 Synthesized Cross-Domain Hypothesis")
                     st.markdown(result['agent_reasoning']['output_text'])
+
+                    # Display Abductive and Memory insights
+                    st.markdown("---")
+                    col_abd, col_mem = st.columns(2)
+                    
+                    with col_abd:
+                        st.markdown("### 🔬 Abductive Causal Reasoning")
+                        abd = result.get("abductive_reasoning")
+                        if abd:
+                            st.info(f"**Best Causal Explanation:**\n{abd.get('best_explanation')}")
+                            st.write(f"**Causal Pathway:** `{abd.get('causal_pathway')}`")
+                            st.markdown(f"**Imagined Scenario:**\n*{abd.get('imagined_scenario')}*")
+                            
+                            with st.expander("Alternative Abductive Proposals"):
+                                for cand in abd.get("candidate_proposals", []):
+                                    st.write(f"- **{cand.get('id')}** (Score: `{cand.get('causal_score')}`): {cand.get('explanation')}")
+                        else:
+                            st.write("No abductive reasoning data available.")
+                            
+                    with col_mem:
+                        st.markdown("### 🏛️ MirrorMind Research Memory Profile")
+                        mem = result.get("memory_footprint")
+                        if mem:
+                            ind = mem.get("individual", {})
+                            persona = ind.get("persona", {})
+                            st.success(f"**Cognitive Persona:** {persona.get('cognitive_style')}\n\n"
+                                       f"**Safety Focus:** {persona.get('safety_focus_level')} | "
+                                       f"**Interactions:** {persona.get('interaction_count')}")
+                            
+                            st.markdown("**Core Semantic Interests:**")
+                            for term, count in ind.get("top_semantic_interests", []):
+                                st.write(f"- `{term}`: queried {count} times")
+                                
+                            with st.expander("Domain & Interdisciplinary Footprints"):
+                                st.write("**Domain Counts:**", mem.get("domain", {}))
+                                st.write("**Interdisciplinary Links:**", mem.get("interdisciplinary", {}))
+                        else:
+                            st.write("No memory profile data available.")
 
                 # Visualizing Cross-Domain Relationship Graph
                 st.markdown("---")
@@ -252,6 +330,23 @@ with tabs[0]:
                     height=350
                 )
                 st.plotly_chart(fig, width='stretch')
+                st.markdown("### Interactive GraphRAG evidence network")
+                ranked_paths = result.get("graph_rag", {}).get("multi_hop_paths", [])
+                selected_path = None
+                if ranked_paths:
+                    path_labels = [f"#{index + 1} · {path.get('bridge_entity', 'unknown')} · score {path.get('path_score', 0.0)}" for index, path in enumerate(ranked_paths)]
+                    chosen_index = st.selectbox("Highlight a ranked evidence path", range(len(ranked_paths)), format_func=lambda index: path_labels[index])
+                    selected_path = ranked_paths[chosen_index]
+                    st.caption(f"Relevance {selected_path.get('relevance_score', 0.0)} · Novelty {selected_path.get('novelty_score', 0.0)} · {'Cross-domain' if selected_path.get('cross_domain', False) else 'Within-domain'}")
+                interactive_graph = graph_rag_figure(result.get("graph_rag", {}), selected_path)
+                if interactive_graph:
+                    st.plotly_chart(interactive_graph, width='stretch')
+                with st.expander("GraphRAG paths and scoring rationale"):
+                    st.json({
+                        "graph_rag": result.get("graph_rag", {}),
+                        "cross_domain_scoring": discovery,
+                        "confidence_calibration": calibration,
+                    })
 
         except Exception as e:
             st.error(f"Unexpected error: {str(e)}")
@@ -330,4 +425,3 @@ with tabs[2]:
                 st.error(error)
             else:
                 st.success(f"Document successfully ingested into Qdrant! ID: {result['inserted_ids'][0]}")
-

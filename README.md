@@ -2,6 +2,24 @@
 
 **CrossMind** is an optimized neuro-symbolic workflow for cross-domain scientific discovery powered by **Yuuki RxG Nano (1.5B)** as the neural reasoning brain and **Qdrant** as the secure vector retrieval layer.
 
+## Evidence-grounded discovery signals
+
+Each query now also returns three decision-support artifacts:
+
+- `graph_rag`: a typed knowledge subgraph built from RBAC-filtered evidence, including supported multi-hop document → entity → document paths.
+- `cross_domain_scoring`: an inspectable 0–100 discovery-strength score combining semantic relevance (30%), evidence coverage (25%), domain diversity (25%), and graph bridge strength (20%).
+- `confidence_calibration`: a conservative confidence estimate derived from the model estimate (35%), discovery strength (40%), and symbolic validation (25%), with a confidence interval and recommended decision state.
+
+Graph expansion is kept within the retrieved, access-controlled evidence set; it never introduces a document the requesting role could not retrieve.
+
+## Docker, monitoring, and logging
+
+Start the complete stack with `docker compose up --build`. It exposes the dashboard on `http://localhost:8501`, API on `http://localhost:8000`, Qdrant on `6333`, Prometheus on `9090`, and Grafana on `3000` (default Grafana credentials are `admin` / `admin` unless overridden).
+
+The API emits JSON request logs to standard output, provides `GET /healthz` for container health checks, and exposes Prometheus metrics at `GET /metrics`. The provisioned Grafana dashboard shows API request rate, p95 latency, and query decision rate.
+
+The dashboard sends its confidence policy with every query. Adjust the sidebar's **Proceed** and **Investigate** thresholds to match the use case; the returned calibrated decision records the thresholds used. GraphRAG paths are ranked by seed-document relevance and bridge novelty, and evidence traceability returns the exact most relevant sentence from every retrieved document.
+
 ---
 
 ## 🏆 Why Yuuki RxG Nano is Ideal for CrossMind

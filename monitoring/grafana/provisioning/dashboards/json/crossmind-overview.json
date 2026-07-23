@@ -1,0 +1,27 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "API request rate",
+      "targets": [{"expr": "sum(rate(crossmind_http_requests_total[5m])) by (path)", "legendFormat": "{{path}}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 API latency",
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(crossmind_http_request_duration_seconds_bucket[5m])) by (le, path))", "legendFormat": "{{path}}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "Query decisions",
+      "targets": [{"expr": "sum(rate(crossmind_queries_total[5m])) by (decision)", "legendFormat": "{{decision}}"}],
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+    }
+  ],
+  "schemaVersion": 39,
+  "title": "CrossMind Overview",
+  "version": 1
+}

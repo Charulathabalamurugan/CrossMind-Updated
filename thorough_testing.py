@@ -8,7 +8,7 @@ import time
 import asyncio
 import sys
 
-API_BASE = "http://localhost:8000"
+API_BASE = "http://127.0.0.1:8000"
 PASS = 0
 FAIL = 0
 TOTAL = 0
@@ -41,22 +41,30 @@ try:
     test("Access-Control-Allow-Origin matches origin", 
          headers.get("Access-Control-Allow-Origin") == "http://localhost:8501",
          f"got: {headers.get('Access-Control-Allow-Origin')}")
-    test("Access-Control-Allow-Methods exists", 
-         "Access-Control-Allow-Methods" in headers,
-         f"got: {headers.get('Access-Control-Allow-Methods')}")
-    test("Access-Control-Allow-Headers exists", 
-         "Access-Control-Allow-Headers" in headers,
-         f"got: {headers.get('Access-Control-Allow-Headers')}")
 except Exception as e:
     test("CORS headers with Origin", False, str(e))
 
 # Test OPTIONS preflight
 try:
-    r = requests.options(f"{API_BASE}/", timeout=5, headers={"Origin": "http://localhost:8501"})
+    r = requests.options(
+        f"{API_BASE}/", 
+        timeout=5, 
+        headers={
+            "Origin": "http://localhost:8501",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "Content-Type"
+        }
+    )
     test("OPTIONS preflight returns 200", r.status_code == 200, f"got: {r.status_code}")
     test("OPTIONS has CORS origin", 
          r.headers.get("Access-Control-Allow-Origin") is not None,
          f"got: {r.headers.get('Access-Control-Allow-Origin')}")
+    test("Access-Control-Allow-Methods exists on OPTIONS", 
+         "Access-Control-Allow-Methods" in r.headers,
+         f"got: {r.headers.get('Access-Control-Allow-Methods')}")
+    test("Access-Control-Allow-Headers exists on OPTIONS", 
+         "Access-Control-Allow-Headers" in r.headers,
+         f"got: {r.headers.get('Access-Control-Allow-Headers')}")
 except Exception as e:
     test("OPTIONS preflight", False, str(e))
 

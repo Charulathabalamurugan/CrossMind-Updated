@@ -36,7 +36,47 @@ class SymbolicPreFilter:
     Step 3a: Deterministic rule engine executed in <50ms.
     Parses user query, identifies target entities and domain categories,
     filters search space and enforces hard query constraints.
+    Optimized with Aho-Corasick algorithm for O(N + M) matching complexity.
     """
+    def __init__(self):
+        # Build Aho-Corasick trie from KNOWN_ENTITIES
+        # Each node is a dict: {char: child_index}
+        self.trie = [{}]
+        self.output = [[]]  # list of tuples: (entity, domain)
+        self.fail = [0]
+        
+        for domain, entities in KNOWN_ENTITIES.items():
+            for entity in entities:
+                word = entity.lower()
+                curr = 0
+                for char in word:
+                    if char not in self.trie[curr]:
+                        self.trie[curr][char] = len(self.trie)
+                        self.trie.append({})
+                        self.output.append([])
+                        self.fail.append(0)
+                    curr = self.trie[curr][char]
+                self.output[curr].append((entity, domain))
+                
+        # Build fail links (BFS)
+        from collections import deque
+        queue = deque()
+        for char, child in self.trie[0].items():
+            self.fail[child] = 0
+            queue.append(child)
+            
+        while queue:
+            curr = queue.popleft()
+            for char, child in self.trie[curr].items():
+                f = self.fail[curr]
+                while f > 0 and char not in self.trie[f]:
+                    f = self.fail[f]
+                if char in self.trie[f]:
+                    f = self.trie[f][char]
+                self.fail[child] = f
+                self.output[child].extend(self.output[f])
+                queue.append(child)
+
     def process(self, query: str) -> Dict[str, Any]:
         start_time = time.time()
         query_lower = query.lower()
@@ -44,12 +84,20 @@ class SymbolicPreFilter:
         detected_domains = []
         extracted_entities = []
 
-        for domain, entities in KNOWN_ENTITIES.items():
-            for entity in entities:
-                if entity.lower() in query_lower:
+        # Single-pass search using Aho-Corasick automaton
+        curr = 0
+        for char in query_lower:
+            while curr > 0 and char not in self.trie[curr]:
+                curr = self.fail[curr]
+            if char in self.trie[curr]:
+                curr = self.trie[curr][char]
+            
+            # Record any matches at this state
+            for entity, domain in self.output[curr]:
+                if entity not in extracted_entities:
                     extracted_entities.append(entity)
-                    if domain not in detected_domains:
-                        detected_domains.append(domain)
+                if domain not in detected_domains:
+                    detected_domains.append(domain)
 
         # Detect language
         spanish_keywords = ["buscar", "relacion", "relación", "encontrar", "conectar", "nanomateriales", "enfermedad"]

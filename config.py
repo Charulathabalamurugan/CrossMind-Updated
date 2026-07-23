@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     MAX_DOC_CONTENT_LENGTH: int = int(os.getenv("MAX_DOC_CONTENT_LENGTH", "50000"))
 
     # Rate limiting (requests per minute per IP)
-    RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
+    RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "1000"))
 
     # ========== Qdrant settings ==========
     QDRANT_HOST: str = os.getenv("QDRANT_HOST", "localhost")
@@ -65,7 +65,7 @@ class Settings(BaseSettings):
 
     # ========== Embedding settings ==========
     EMBEDDING_MODEL_NAME: str = os.getenv("EMBEDDING_MODEL_NAME", "nomic-ai/nomic-embed-text-v1.5")
-    EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "256"))
+    EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "64"))
 
     class Config:
         env_file = ".env"

@@ -3,6 +3,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from ingestion.embedding import get_embedder
 from vector_store.qdrant_engine import get_qdrant_engine
+from reasoning.knowledge_graph import get_knowledge_graph
 
 logger = logging.getLogger("crossmind.ingestion")
 
@@ -15,6 +16,7 @@ class IngestionPipeline:
     def __init__(self):
         self.embedder = get_embedder()
         self.vector_engine = get_qdrant_engine()
+        self.knowledge_graph = get_knowledge_graph()
 
     def ingest_documents(self, documents: List[Dict[str, Any]]) -> List[str]:
         """
@@ -63,6 +65,9 @@ class IngestionPipeline:
             })
 
         inserted_ids = self.vector_engine.upsert_vectors(records_to_upsert)
+        # Index the same normalized metadata used by vector retrieval. IDs are
+        # assigned before graph indexing so both stores share stable references.
+        self.knowledge_graph.index_documents([record["payload"] for record in records_to_upsert])
         logger.info(f"Successfully ingested {len(inserted_ids)} document records into Qdrant vector store.")
         return inserted_ids
 

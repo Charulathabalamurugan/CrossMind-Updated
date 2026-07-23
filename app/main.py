@@ -3,6 +3,7 @@ import logging
 import asyncio
 import re
 import time
+import uuid
 from fastapi import FastAPI, Query, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -14,8 +15,9 @@ from config import settings
 from ingestion.pipeline import get_ingestion_pipeline
 from ingestion.seed_data import seed_default_knowledge
 from reasoning.neuro_symbolic_pipeline import get_neuro_symbolic_pipeline
+from app.observability import configure_logging, record_request, prometheus_payload, QUERIES
 
-logging.basicConfig(level=logging.INFO)
+configure_logging()
 logger = logging.getLogger("crossmind.api")
 
 # ========== Security: API Key Auth ==========
@@ -79,22 +81,33 @@ app.add_middleware(
 # Security: Request size & rate limiting middleware
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
+    started_at = time.perf_counter()
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
     content_length = request.headers.get("content-length")
     if content_length and int(content_length) > settings.MAX_REQUEST_SIZE_MB * 1024 * 1024:
-        return JSONResponse(
+        response = JSONResponse(
             status_code=413,
             content={"detail": f"Request too large. Max size: {settings.MAX_REQUEST_SIZE_MB}MB"}
         )
+        response.headers["X-Request-ID"] = request_id
+        record_request(request.method, request.url.path, 413, started_at)
+        return response
     client_ip = request.client.host if request.client else "unknown"
     if not check_rate_limit(client_ip):
-        return JSONResponse(
+        response = JSONResponse(
             status_code=429,
             content={"detail": "Rate limit exceeded. Try again later."}
         )
+        response.headers["X-Request-ID"] = request_id
+        record_request(request.method, request.url.path, 429, started_at)
+        return response
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["X-Request-ID"] = request_id
+    record_request(request.method, request.url.path, response.status_code, started_at)
+    logger.info("request_complete", extra={"request_id": request_id, "method": request.method, "path": request.url.path, "status_code": response.status_code, "duration_ms": round((time.perf_counter() - started_at) * 1000, 2)})
     return response
 
 VALID_ROLES = {"public", "researcher", "admin"}
@@ -118,6 +131,8 @@ class DocumentIngestRequest(BaseModel):
 class QueryRequest(BaseModel):
     query: str = Field(..., example="Find cross-domain links between Alzheimer's biomarkers and nanomaterials")
     user_role: str = Field("researcher", example="researcher")
+    confidence_proceed_threshold: float = Field(0.75, ge=0.0, le=1.0)
+    confidence_investigate_threshold: float = Field(0.50, ge=0.0, le=1.0)
 
     @validator("query")
     def validate_query(cls, q):
@@ -131,6 +146,13 @@ class QueryRequest(BaseModel):
         if role not in VALID_ROLES:
             raise ValueError(f"Invalid role: {role}. Must be one of {VALID_ROLES}")
         return role
+
+    @validator("confidence_investigate_threshold")
+    def validate_confidence_thresholds(cls, value, values):
+        proceed = values.get("confidence_proceed_threshold", 0.75)
+        if value > proceed:
+            raise ValueError("confidence_investigate_threshold cannot exceed confidence_proceed_threshold")
+        return value
 
 @app.on_event("startup")
 async def startup_event():
@@ -177,8 +199,18 @@ async def ingest_documents(payload: DocumentIngestRequest):
 @app.post("/api/query", dependencies=[Depends(verify_api_key)])
 async def execute_query(req: QueryRequest):
     pipeline = get_neuro_symbolic_pipeline()
-    result = pipeline.process_query(query=req.query, user_role=req.user_role)
+    result = pipeline.process_query(query=req.query, user_role=req.user_role, confidence_thresholds={"proceed": req.confidence_proceed_threshold, "investigate": req.confidence_investigate_threshold})
+    QUERIES.labels(result["confidence_calibration"]["decision"]).inc()
     return result
+
+@app.get("/healthz")
+async def healthcheck():
+    return {"status": "healthy", "service": settings.PROJECT_NAME}
+
+@app.get("/metrics")
+async def prometheus_metrics():
+    payload, content_type = prometheus_payload()
+    return StreamingResponse(iter([payload]), media_type=content_type)
 
 @app.get("/api/stream_reasoning", dependencies=[Depends(verify_api_key)])
 async def stream_reasoning(
@@ -196,7 +228,12 @@ async def stream_reasoning(
     async def sse_generator():
         for event in pipeline.stream_query(query, user_role=user_role):
             yield f"data: {json.dumps(event)}\n\n"
-            await asyncio.sleep(0.05)
+            evt_data = event.get("data", {})
+            stage = evt_data.get("stage") if isinstance(evt_data, dict) else None
+            if stage in ("thinking", "hypothesis_synthesis"):
+                await asyncio.sleep(0.01)
+            else:
+                await asyncio.sleep(0.02)
 
     return StreamingResponse(sse_generator(), media_type="text/event-stream")
 
@@ -216,4 +253,3 @@ async def get_metrics():
             "Total_End_To_End_Latency": "7-14s"
         }
     }
-
