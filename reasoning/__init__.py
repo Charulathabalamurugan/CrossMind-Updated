@@ -1,3 +1,6 @@
+# Phase 1: Retrieval Package
+from reasoning.wfa_fast_path import get_wfa_engine
+
 # Phase 3: Neuro-Symbolic Reasoning Package
 from reasoning.neuro_symbolic_pipeline import get_neuro_symbolic_pipeline
 from reasoning.multi_agent import get_multi_agent_orchestrator
@@ -8,3 +11,30 @@ from reasoning.experimental_blueprint import get_experimental_blueprint_generato
 from reasoning.evidence_attribution import get_evidence_attributor
 from reasoning.risk_feedback import get_risk_feedback_engine
 from reasoning.collaboration_recommender import get_collaboration_recommender
+from reasoning.sparse_retriever import get_sparse_retriever
+from reasoning.query_cache import get_query_cache
+from reasoning.hypothesis_generator import get_hypothesis_generator
+from reasoning.rule_engine import get_rule_engine
+from reasoning.bridge_scorer import get_bridge_scorer
+from reasoning.result_formatter import format_pipeline_result
+from reasoning.benchmark_collector import get_benchmark_collector
+from reasoning.feedback_collector import get_feedback_collector
+from reasoning.retrainer import get_model_retrainer
+from reasoning.rule_updater import get_rule_updater
+
+# Phase 2: Validation Package
+from reasoning.gliner_extractor import get_gliner_extractor
+from reasoning.datalog_engine import get_datalog_engine
+from reasoning.opa_enforcer import get_opa_enforcer
+
+# Phase 3: Reasoning Upgrades
+from reasoning.neo4j_graph import get_neo4j_store
+from reasoning.deepseek_agent import get_deepseek_agent
+from reasoning.abductive_engine_enhanced import get_enhanced_abductive_engine
+
+# Phase 4: Learning Upgrades
+from reasoning.dldb import get_dldb
+from reasoning.drift_detector import get_drift_detector
+from reasoning.treeinterpreter import get_tree_interpreter
+from reasoning.prometheus_monitor import get_prometheus_monitor
+from reasoning.mlflow_registry import get_model_registry

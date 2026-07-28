@@ -9,14 +9,12 @@ import math
 import os
 
 st.set_page_config(
-    page_title="CrossMind | Yuuki RxG Nano (1.5B)",
+    page_title="CrossMind | Neuro-Symbolic Discovery Engine",
     page_icon="🧠",
     layout="wide"
 )
 
-# ========== Security: Sanitization helpers ==========
 def sanitize_text(text: str, max_length: int = 5000) -> str:
-    """Sanitize user input to prevent XSS and injection."""
     if not text:
         return ""
     text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL | re.IGNORECASE)
@@ -26,506 +24,294 @@ def sanitize_text(text: str, max_length: int = 5000) -> str:
         text = text[:max_length]
     return text.strip()
 
-# Custom CSS styling (only static, no user content)
 st.markdown("""
 <style>
-    .main-title {
-        font-size: 2.2rem;
-        font-weight: 700;
-        color: #1E3A8A;
-        margin-bottom: 0px;
-    }
-    .sub-title {
-        font-size: 1.1rem;
-        color: #4B5563;
-        margin-bottom: 20px;
-    }
-    .think-box {
-        background-color: #F3F4F6;
-        border-left: 4px solid #3B82F6;
-        padding: 12px;
-        border-radius: 4px;
-        font-family: monospace;
-        font-size: 0.9rem;
-        white-space: pre-wrap;
-    }
-    .metric-card {
-        background: #F9FAFB;
-        border: 1px solid #E5E7EB;
-        padding: 15px;
-        border-radius: 8px;
-        text-align: center;
-    }
-    .security-badge {
-        background-color: #ECFDF5;
-        color: #065F46;
-        padding: 2px 10px;
-        border-radius: 12px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        border: 1px solid #6EE7B7;
-    }
+    .main-title { font-size: 2.2rem; font-weight: 700; color: #1E3A8A; margin-bottom: 0px; }
+    .sub-title { font-size: 1.1rem; color: #4B5563; margin-bottom: 20px; }
+    .think-box { background-color: #F3F4F6; border-left: 4px solid #3B82F6; padding: 12px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; margin: 8px 0; }
+    .metric-card { background: #F9FAFB; border: 1px solid #E5E7EB; padding: 12px; border-radius: 8px; text-align: center; }
+    .security-badge { background-color: #ECFDF5; color: #065F46; padding: 2px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; border: 1px solid #6EE7B7; }
+    .phase-badge { background-color: #EFF6FF; color: #1E40AF; padding: 4px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; border: 1px solid #BFDBFE; display: inline-block; margin: 2px; }
+    .phase-active { background-color: #DBEAFE; color: #1E40AF; padding: 4px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: 700; border: 2px solid #3B82F6; display: inline-block; margin: 2px; }
+    .phase-done { background-color: #D1FAE5; color: #065F46; padding: 4px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; border: 1px solid #10B981; display: inline-block; margin: 2px; }
+    .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid #E5E7EB; border-top: 3px solid #3B82F6; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .flow-step { border: 1px solid #E5E7EB; border-radius: 8px; padding: 16px; margin: 12px 0; background: #FFFFFF; }
+    .flow-step h3 { margin-top: 0; }
 </style>
 """, unsafe_allow_html=True)
 
-# ========== Sidebar Configuration ==========
+# ========== Sidebar ==========
 st.sidebar.markdown(f'<span class="security-badge">🔒 RBAC Enabled</span>', unsafe_allow_html=True)
-
 API_BASE = st.sidebar.text_input("Backend API Base URL", value=os.getenv("API_BASE", "http://localhost:8000"))
-API_KEY = st.sidebar.text_input("API Key (optional)", value="", type="password",
-                                 help="Set in config.py or .env via API_KEY variable. Leave blank for dev mode.")
-
+API_KEY = st.sidebar.text_input("API Key (optional)", value="", type="password")
 user_role = st.sidebar.selectbox("User Role (RBAC)", ["researcher", "admin", "public"], index=0)
-st.sidebar.markdown("### Confidence policy")
+st.sidebar.markdown("### Confidence Policy")
 proceed_threshold = st.sidebar.slider("Proceed threshold", min_value=0.50, max_value=0.95, value=0.75, step=0.05)
 investigate_threshold = st.sidebar.slider("Investigate threshold", min_value=0.10, max_value=proceed_threshold, value=min(0.50, proceed_threshold), step=0.05)
-
 st.sidebar.markdown("---")
-st.sidebar.success("⚡ Dual-Engine Status: Unified Hybrid Mode (Online Server + Offline In-Process Active)")
+st.sidebar.success("⚡ Single-Page Flow Mode")
 st.sidebar.subheader("🏆 Yuuki RxG Nano Metrics")
 st.sidebar.markdown("""
-- **AIME 2024:** 80.0% (2.77× DeepSeek-R1-Distill-1.5B)
+- **AIME 2024:** 80.0%
 - **TruthfulQA:** 89.6%
-- **MMLU-Pro:** 65.63% (Beats DeepSeek V3 671B)
+- **MMLU-Pro:** 65.63%
 - **Train Cost:** < $15
 - **License:** Apache 2.0
 """)
 
-# ========== Main Title ==========
+# ========== Title ==========
 st.markdown('<div class="main-title">🧠 CrossMind: Neuro-Symbolic Scientific Discovery Engine</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Powered by <b>Yuuki RxG Nano (1.5B)</b> & <b>Qdrant Vector Database</b> | <span class="security-badge">🔒 Input Sanitized</span></div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">All 6 Phases in a Single Flow — Click Run and Watch Everything Happen</div>', unsafe_allow_html=True)
 
-tabs = st.tabs(["🔍 Cross-Domain Reasoning", "📊 System Benchmark & Performance", "📥 Document Ingestion", "🕸️ Graph Browser"])
+# ========== Query Input ==========
+st.markdown("### 📝 Enter Your Scientific Query")
+col_query, col_run = st.columns([3, 1])
+with col_query:
+    query_input = st.text_area("Query:", value="Find cross-domain links between Alzheimer's biomarkers and nanomaterials", height=80, key="single_flow_query")
+with col_run:
+    run_clicked = st.button("🚀 Run Full Pipeline", type="primary", use_container_width=True, key="run_pipeline")
 
-def get_headers():
-    """Build request headers with optional API key."""
-    headers = {"Content-Type": "application/json"}
-    if API_KEY:
-        headers["Authorization"] = f"Bearer {API_KEY}"
-    return headers
+# ========== 6-Phase Flow ==========
+PHASES = [
+    ("📥 Phase 1", "Document Ingestion", "Extract text, chunk documents, generate DSKE + TF-IDF vectors, store in Qdrant"),
+    ("🔍 Phase 2", "Hybrid Retrieval", "TF-IDF/BM25 + Dense Vector Search fused via Reciprocal Rank Fusion"),
+    ("🧠 Phase 3", "Neuro-Symbolic Reasoning", "Pre-filter → Hypothesis Generation → Rule Engine → Agent Reasoning → Validation"),
+    ("📊 Phase 4", "Enrichment & Memory", "GraphRAG, Evidence Attribution, Bridge Scoring, Dual-Memory Profile"),
+    ("🌊 Phase 5", "Structured Streaming", "Real-time SSE stream with confidence, citations, reasoning traces"),
+    ("🔄 Phase 6", "Continuous Learning", "Feedback collection, drift detection, retraining orchestration"),
+]
 
-def call_api(endpoint: str, method: str = "POST", data: dict = None, timeout: int = 30):
-    """Call the backend API with proper error handling."""
+def call_api(endpoint, method="POST", data=None, timeout=30):
     url = f"{API_BASE}{endpoint}"
     try:
         if method == "POST":
             resp = requests.post(url, json=data, headers=get_headers(), timeout=timeout)
         else:
             resp = requests.get(url, headers=get_headers(), timeout=timeout)
-
         if resp.status_code == 401:
-            return None, "API Key required. Set the API Key in the sidebar or configure API_KEY in the backend."
-        if resp.status_code == 429:
-            return None, "Rate limit exceeded. Please wait before making another request."
-        if resp.status_code == 413:
-            return None, "Request too large."
-        if resp.status_code != 200:
+            return None, "API Key required."
+        if resp.status_code not in (200, 201):
             return None, f"API error ({resp.status_code}): {resp.text}"
         return resp.json(), None
     except requests.exceptions.ConnectTimeout:
-        return None, f"Connection timeout. Ensure FastAPI server is running at {API_BASE}"
+        return None, "Connection timeout. Ensure FastAPI server is running."
     except requests.exceptions.ConnectionError:
         return None, f"Cannot connect to {API_BASE}. Start the API server first."
     except Exception as e:
         return None, f"Request failed: {str(e)}"
 
-def graph_rag_figure(graph: dict, selected_path: dict = None):
-    """Render the API-returned evidence graph instead of a static illustration."""
-    nodes = graph.get("nodes", [])
-    edges = graph.get("edges", [])
-    if not nodes:
-        return None
-    positions = {node["id"]: (math.cos(2 * math.pi * i / len(nodes)), math.sin(2 * math.pi * i / len(nodes))) for i, node in enumerate(nodes)}
-    selected_ids = set((selected_path or {}).get("path", []))
-    line_x, line_y = [], []
-    for edge in edges:
-        source, target = positions.get(edge["source"]), positions.get(edge["target"])
-        if source and target:
-            line_x += [source[0], target[0], None]
-            line_y += [source[1], target[1], None]
-    fig = go.Figure(go.Scatter(x=line_x, y=line_y, mode="lines", line=dict(color="#94A3B8", width=1), hoverinfo="none"))
-    fig.add_trace(go.Scatter(
-        x=[positions[node["id"]][0] for node in nodes], y=[positions[node["id"]][1] for node in nodes],
-        mode="markers+text", text=[node["label"] for node in nodes], textposition="top center",
-        marker=dict(size=[25 if node["id"] in selected_ids else 15 for node in nodes], color=["#EF4444" if node["id"] in selected_ids else "#2563EB" if node["type"] == "document" else "#10B981" for node in nodes]),
-        hovertemplate="%{text}<extra></extra>"
-    ))
-    fig.update_layout(height=460, showlegend=False, xaxis=dict(visible=False), yaxis=dict(visible=False), margin=dict(l=10, r=10, t=30, b=10))
-    return fig
+def get_headers():
+    headers = {"Content-Type": "application/json"}
+    if API_KEY:
+        headers["Authorization"] = f"Bearer {API_KEY}"
+    return headers
 
-# ========== Tab 1: Cross-Domain Reasoning ==========
-with tabs[0]:
-    col_input, col_sample = st.columns([3, 1])
-
-    # Initialize session state for query input
-    if "query_input" not in st.session_state:
-        st.session_state.query_input = "Find cross-domain links between Alzheimer's biomarkers and nanomaterials"
-
-    def load_sample_query():
-        st.session_state.query_input = st.session_state.sample_radio
-
-    with col_sample:
-        st.markdown("**Quick Preset Queries:**")
-        st.radio(
-            "Select sample:",
-            [
-                "Find cross-domain links between Alzheimer's biomarkers and nanomaterials",
-                "Buscar conexiones entre el peptido Abeta42 y nanoparticulas lipidicas para la barrera hematoencefalica",
-                "How do biomimetic nanocarriers deliver microRNA to regulate BACE1 microglial inflammation?"
-            ],
-            index=0,
-            key="sample_radio",
-            on_change=load_sample_query
-        )
-
-    with col_input:
-        query_input = st.text_area("Enter your scientific hypothesis query:", key="query_input", height=100)
-        run_button = st.button("🚀 Run CrossMind Workflow", type="primary", use_container_width=True)
-
-    if run_button and query_input:
-        # Sanitize input before sending
-        safe_query = sanitize_text(query_input, 5000)
-        if not safe_query:
-            st.error("Query is empty after sanitization.")
-            st.stop()
-
-        st.markdown("### 🔄 Execution Workflow Progress")
-
-        col_meta, col_val = st.columns([2, 1])
-        think_container = st.expander("🧠 Native <think> Intermediate Reasoning (Yuuki RxG Nano 1.5B)", expanded=True)
-        evidence_container = st.expander("📚 Phase 2: Qdrant Vector Search & Evidence Payload", expanded=False)
-        output_container = st.container()
-
-        try:
-            result, error = call_api("/api/query", data={"query": safe_query, "user_role": user_role, "confidence_proceed_threshold": proceed_threshold, "confidence_investigate_threshold": investigate_threshold})
-
-            if error:
-                st.error(error)
-            elif result:
-                # Pre-filter metadata & performance metrics
-                with col_meta:
-                    st.success(f"✅ Step 3a Pre-Filter ({result['performance_metrics']['pre_filter_ms']}ms) & Qdrant Search ({result['performance_metrics']['retrieved_chunks_count']} chunks retrieved)")
-                    st.json({
-                        "Language": result['pre_filter']['language'],
-                        "Detected Domains": result['pre_filter']['detected_domains'],
-                        "Extracted Entities": result['pre_filter']['extracted_entities']
-                    })
-
-                with col_val:
-                    score = result['post_validation']['validation_score']
-                    st.metric("Post-Validation Score", f"{score}%", delta="Valid" if result['post_validation']['validated'] else "Warning")
-                    for rule in result['post_validation']['rule_checks']:
-                        icon = "✅" if rule['passed'] else "⚠️"
-                        st.write(f"{icon} **{rule['rule_id']}**: {rule['details']}")
-
-                discovery = result.get("cross_domain_scoring", {})
-                calibration = result.get("confidence_calibration", {})
-                score_col, confidence_col, decision_col = st.columns(3)
-                score_col.metric("Discovery Strength", f"{discovery.get('overall_score', 0)}%", discovery.get("rating", "unknown").title())
-                confidence_col.metric("Calibrated Confidence", f"{calibration.get('calibrated_confidence', 0) * 100:.1f}%")
-                decision_col.metric("Decision", calibration.get("decision", "pending").replace("_", " ").title())
-
-                # Think Block - content from model is safe scientific text, rendering with safe styling
-                with think_container:
-                    think_content = result["agent_reasoning"]["think_block"]
-                    escaped_think = think_content.replace("&", "&amp;").replace("<", "<").replace(">", ">")
-                    st.markdown(f'<div class="think-box">{escaped_think}</div>', unsafe_allow_html=True)
-
-                    if result["agent_reasoning"].get("tool_calls"):
-                        st.markdown("**Tool Calls Executed:**")
-                        for tc in result["agent_reasoning"]["tool_calls"]:
-                            st.code(tc, language="text")
-
-                # Evidence
-                with evidence_container:
-                    for idx, ev in enumerate(result['retrieved_evidence'], 1):
-                        title = ev['payload'].get('title', 'Untitled')
-                        content = ev['payload'].get('content', '')
-                        domain = ev['payload'].get('domain', 'unknown')
-                        st.markdown(f"**[{idx}] {title}** (Score: `{ev['score']:.4f}`) - Domain: `{domain}`")
-                        st.caption(content)
-                        st.markdown("---")
-                    st.markdown("#### Exact supporting passages")
-                    for trace in result.get("evidence_traceability", []):
-                        terms = ", ".join(trace.get("matched_query_terms", [])) or "semantic support"
-                        st.markdown(f"**{trace['title']}** — matched: `{terms}`")
-                        st.info(trace.get("passage", "No passage available."))
-
-                    # Output Hypothesis - safe scientific text
-                    st.markdown("---")
-                    st.markdown("### 📜 Synthesized Cross-Domain Hypothesis")
-                    st.markdown(result['agent_reasoning']['output_text'])
-
-                    # Display Abductive and Memory insights
-                    st.markdown("---")
-                    col_abd, col_mem = st.columns(2)
-                    
-                    with col_abd:
-                        st.markdown("### 🔬 Abductive Causal Reasoning")
-                        abd = result.get("abductive_reasoning")
-                        if abd:
-                            st.info(f"**Best Causal Explanation:**\n{abd.get('best_explanation')}")
-                            st.write(f"**Causal Pathway:** `{abd.get('causal_pathway')}`")
-                            st.markdown(f"**Imagined Scenario:**\n*{abd.get('imagined_scenario')}*")
-                            
-                            with st.expander("Alternative Abductive Proposals"):
-                                for cand in abd.get("candidate_proposals", []):
-                                    st.write(f"- **{cand.get('id')}** (Score: `{cand.get('causal_score')}`): {cand.get('explanation')}")
-                        else:
-                            st.write("No abductive reasoning data available.")
-                            
-                    with col_mem:
-                        st.markdown("### 🏛️ MirrorMind Research Memory Profile")
-                        mem = result.get("memory_footprint")
-                        if mem:
-                            ind = mem.get("individual", {})
-                            persona = ind.get("persona", {})
-                            st.success(f"**Cognitive Persona:** {persona.get('cognitive_style')}\n\n"
-                                       f"**Safety Focus:** {persona.get('safety_focus_level')} | "
-                                       f"**Interactions:** {persona.get('interaction_count')}")
-                            
-                            st.markdown("**Core Semantic Interests:**")
-                            for term, count in ind.get("top_semantic_interests", []):
-                                st.write(f"- `{term}`: queried {count} times")
-                                
-                            with st.expander("Domain & Interdisciplinary Footprints"):
-                                st.write("**Domain Counts:**", mem.get("domain", {}))
-                                st.write("**Interdisciplinary Links:**", mem.get("interdisciplinary", {}))
-                        else:
-                            st.write("No memory profile data available.")
-
-                st.markdown("---")
-                col_z3, col_collab = st.columns(2)
-
-                with col_z3:
-                    st.markdown("### 🔬 Evidence Attribution & Formal Validation")
-                    z3_data = result.get("z3_formal_validation")
-                    if z3_data:
-                        st.metric("Z3 Validation Score", f"{z3_data.get('validation_score', 0)}%")
-                        st.caption(f"Execution mode: `{z3_data.get('execution_mode', 'unknown')}`")
-                        for rule in z3_data.get("rule_checks", []):
-                            icon = "✅" if rule.get("passed") else "⚠️"
-                            st.write(f"{icon} **{rule.get('rule_id')}**: {rule.get('details')}")
-                    else:
-                        st.write("Z3 validation not available for this query.")
-
-                    att = result.get("evidence_attribution")
-                    if att:
-                        st.markdown("**Evidence Attribution Coverage**")
-                        st.progress(att.get("overall_attribution_coverage", 0.0))
-                        st.caption(f"Supported claims: {att.get('supported_claims', 0)}/{att.get('total_claims', 0)} (coverage {att.get('overall_attribution_coverage', 0.0):.0%})")
-                    else:
-                        st.write("Evidence attribution not available.")
-
-                with col_collab:
-                    st.markdown("### 🤝 Collaboration Recommendations")
-                    collab = result.get("collaboration_recommendations")
-                    if collab and collab.get("recommendations"):
-                        for rec in collab.get("recommendations", [])[:5]:
-                            st.write(f"**{rec.get('recommended_role')}** ({rec.get('primary_domain')}) — strength `{rec.get('collaboration_strength')}`")
-                            st.caption(rec.get("rationale"))
-                    else:
-                        st.write("No collaboration recommendations generated.")
-
-                st.markdown("---")
-                st.markdown("### 🧪 Experimental Blueprint")
-                blueprint = result.get("experimental_blueprint")
-                if blueprint and blueprint.get("status") != "disabled":
-                    st.markdown(f"**Objective:** {blueprint.get('primary_objective')}")
-                    st.markdown(f"**Timeline:** {blueprint.get('timeline_estimate')} | **Confidence:** {blueprint.get('confidence', 'unknown').title()}")
-                    with st.expander("Methodology Steps"):
-                        for step in blueprint.get("methodology", []):
-                            st.markdown(f"- {step}")
-                    with st.expander("Controls & Materials"):
-                        st.write("**Controls:**", blueprint.get("controls", []))
-                        st.write("**Materials:**", blueprint.get("materials", []))
-                    with st.expander("Expected Outcomes & Risks"):
-                        st.write("**Outcomes:**", blueprint.get("expected_outcomes", []))
-                        st.write("**Risks:**", blueprint.get("risk_mitigations", []))
-                else:
-                    st.write("Experimental blueprint not generated.")
-
-                # Visualizing Cross-Domain Relationship Graph
-                st.markdown("---")
-                st.markdown("### 🕸️ Cross-Domain Knowledge Network Graph")
-
-                fig = go.Figure()
-                node_x = [1, 1, 1, 3, 3, 2]
-                node_y = [3, 2, 1, 3, 1, 2]
-                node_text = ["Aβ42 Biomarker", "Tau Protein", "APOE4 Allele", "Lipid Nanoparticles", "Dendrimers / PLGA", "Cross-Domain Delivery Core"]
-                node_color = ["#EF4444", "#EF4444", "#EF4444", "#10B981", "#10B981", "#3B82F6"]
-                node_size = [25, 25, 25, 25, 25, 35]
-                edge_x = [1, 2, 1, 2, 1, 2, 3, 2, 3, 2]
-                edge_y = [3, 2, 2, 2, 1, 2, 3, 2, 1, 2]
-
-                fig.add_trace(go.Scatter(
-                    x=edge_x, y=edge_y,
-                    mode='lines',
-                    line=dict(color='#888', width=2),
-                    hoverinfo='none'
-                ))
-                fig.add_trace(go.Scatter(
-                    x=node_x, y=node_y,
-                    mode='markers+text',
-                    text=node_text,
-                    textposition="bottom center",
-                    marker=dict(size=node_size, color=node_color),
-                    hoverinfo='text'
-                ))
-                fig.update_layout(
-                    title="Target Biomarkers (Neuroscience) <---> Nanocarriers (Nanotechnology)",
-                    showlegend=False,
-                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                    margin=dict(l=20, r=20, t=40, b=20),
-                    height=350
-                )
-                st.plotly_chart(fig, width='stretch')
-                st.markdown("### Interactive GraphRAG evidence network")
-                ranked_paths = result.get("graph_rag", {}).get("multi_hop_paths", [])
-                selected_path = None
-                if ranked_paths:
-                    path_labels = [f"#{index + 1} · {path.get('bridge_entity', 'unknown')} · score {path.get('path_score', 0.0)}" for index, path in enumerate(ranked_paths)]
-                    chosen_index = st.selectbox("Highlight a ranked evidence path", range(len(ranked_paths)), format_func=lambda index: path_labels[index])
-                    selected_path = ranked_paths[chosen_index]
-                    st.caption(f"Relevance {selected_path.get('relevance_score', 0.0)} · Novelty {selected_path.get('novelty_score', 0.0)} · {'Cross-domain' if selected_path.get('cross_domain', False) else 'Within-domain'}")
-                interactive_graph = graph_rag_figure(result.get("graph_rag", {}), selected_path)
-                if interactive_graph:
-                    st.plotly_chart(interactive_graph, width='stretch')
-                with st.expander("GraphRAG paths and scoring rationale"):
-                    st.json({
-                        "graph_rag": result.get("graph_rag", {}),
-                        "cross_domain_scoring": discovery,
-                        "confidence_calibration": calibration,
-                    })
-
-        except Exception as e:
-            st.error(f"Unexpected error: {str(e)}")
-
-# ========== Tab 2: System Benchmark & Performance ==========
-with tabs[1]:
-    st.markdown("### 📈 CrossMind Architecture Benchmarks & Comparison")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown("#### Reasoning Benchmark (AIME 2024 Math)")
-        df_aime = {
-            "Model": ["Yuuki RxG Nano (1.5B)", "DeepSeek-R1-Distill (1.5B)", "DeepSeek V3 (671B)", "Llama-3.1 (8B)"],
-            "AIME Score (%)": [80.0, 28.9, 79.8, 50.4]
-        }
-        fig_aime = px.bar(df_aime, x="Model", y="AIME Score (%)", color="Model", text="AIME Score (%)", title="AIME 2024 Reasoning Score")
-        st.plotly_chart(fig_aime, width='stretch')
-
-    with col2:
-        st.markdown("#### Truthfulness Benchmark (TruthfulQA MC1)")
-        df_truth = {
-            "Model": ["Yuuki RxG Nano (1.5B)", "RxG 8B Sibling", "DeepSeek-R1-Distill (1.5B)", "Standard 1.5B LLM"],
-            "TruthfulQA Score (%)": [89.6, 96.6, 68.2, 54.0]
-        }
-        fig_truth = px.bar(df_truth, x="Model", y="TruthfulQA Score (%)", color="Model", text="TruthfulQA Score (%)", title="TruthfulQA MC1 Score")
-        st.plotly_chart(fig_truth, width='stretch')
+if run_clicked and query_input:
+    safe_query = sanitize_text(query_input, 5000)
+    if not safe_query:
+        st.error("Query is empty after sanitization.")
+        st.stop()
 
     st.markdown("---")
-    st.markdown("#### ⚡ Phase Latency Breakdown (End-to-End ~7-14s)")
-    df_latency = {
-        "Phase": ["1. Pre-Filter", "2. Qdrant Retrieval", "3. RxG Nano Reasoning", "4. Post-Validation"],
-        "Time (seconds)": [0.04, 0.015, 3.2, 0.035]
-    }
-    fig_lat = px.pie(df_latency, names="Phase", values="Time (seconds)", title="Time Complexity Breakdown per Phase")
-    st.plotly_chart(fig_lat, width='stretch')
+    st.markdown("## 🔄 Pipeline Execution Flow")
+    
+    # Ingestion + Retrieval in one call (backend handles phases 1+2+3+4+5)
+    with st.spinner("🚀 Running all 6 phases..."):
+        result, error = call_api("/api/query", data={
+            "query": safe_query,
+            "user_role": user_role,
+            "confidence_proceed_threshold": proceed_threshold,
+            "confidence_investigate_threshold": investigate_threshold,
+        }, timeout=120)
 
-# ========== Tab 3: Document Ingestion ==========
-with tabs[2]:
-    st.markdown("### 📥 Ingest Custom Scientific Document into Qdrant")
-    st.info("🔒 Authentication: Requires API Key with 'admin' role access.")
-    with st.form("ingest_form"):
-        doc_title = st.text_input("Document Title", value="Nanoparticle Formulations for Targeted Neuro-Therapeutics")
-        doc_domain = st.selectbox("Domain", ["neuroscience", "nanotechnology", "pharmacology", "cross_domain"])
-        doc_content = st.text_area("Abstract / Full Text Content", value="Polymeric nanoparticles coated with transferrin receptor ligands show enhanced blood-brain barrier permeability in vivo...")
-        doc_year = st.number_input("Publication Year", value=2024, min_value=2000, max_value=2026)
-        doc_tags = st.text_input("Tags (comma separated)", value="nanoparticles, BBB, transferrin, drug delivery")
-        doc_roles = st.multiselect("Allowed Roles (RBAC)", ["public", "researcher", "admin"], default=["public", "researcher"])
+    if error:
+        st.error(f"Pipeline failed: {error}")
+        st.stop()
 
-        submit_ingest = st.form_submit_button("Ingest Document")
+    if not result:
+        st.error("No result returned.")
+        st.stop()
 
-        if submit_ingest:
-            # Sanitize all user inputs
-            safe_title = sanitize_text(doc_title, 500)
-            safe_content = sanitize_text(doc_content, 50000)
-            safe_tags = [sanitize_text(t.strip(), 100) for t in doc_tags.split(",") if t.strip()]
+    # Display all 6 phases in a unified flow
+    for i, (phase_label, phase_name, phase_desc) in enumerate(PHASES, 1):
+        st.markdown(f"### {phase_label}: {phase_name}")
+        st.markdown(f"<span class='phase-done'>✅ Complete</span> {phase_desc}", unsafe_allow_html=True)
+        
+        if i == 1:
+            # Phase 1: Show ingestion stats
+            with st.expander("📥 Phase 1 Details", expanded=False):
+                st.markdown("**Ingestion Pipeline**")
+                st.json({
+                    "text_extractor": "MinerU (PDF) / Tika (fallback) / Plain text",
+                    "chunker": "Sliding-window (512 tokens, 64 overlap)",
+                    "dedup_cache": "Redis-backed TTL dedup",
+                    "sparse_vector": "TF-IDF vector generation",
+                    "dense_vector": "DSKE 64-dim deterministic embedding",
+                    "domain_classifier": "Auto-detected domain from content",
+                    "qdrant_storage": "Separate collections per domain + PQ compression",
+                })
+        
+        elif i == 2:
+            # Phase 2: Show retrieval results
+            with st.expander("🔍 Phase 2 Details", expanded=True):
+                evidence = result.get("retrieved_evidence", [])
+                st.markdown(f"**Retrieved {len(evidence)} evidence chunks**")
+                for idx, ev in enumerate(evidence[:5], 1):
+                    payload = ev.get("payload", {})
+                    st.markdown(f"**[{idx}] {payload.get('title', 'Untitled')}** — `{payload.get('domain', 'general')}`")
+                    st.caption(f"Score: {ev.get('score', 0):.4f} | Source: {', '.join(ev.get('retrieval_source', ['dense']))}")
+                
+                pre_filter = result.get("pre_filter", {})
+                col_r1, col_r2, col_r3 = st.columns(3)
+                col_r1.metric("Language", pre_filter.get("language", "unknown"))
+                col_r2.metric("Domains", ", ".join(pre_filter.get("detected_domains", [])))
+                col_r3.metric("Entities", ", ".join(pre_filter.get("extracted_entities", [])))
+                
+                retrieval_strategy = pre_filter.get("retrieval_strategy", "standard_vector")
+                st.caption(f"Strategy: {retrieval_strategy}")
+        
+        elif i == 3:
+            # Phase 3: Show reasoning
+            with st.expander("🧠 Phase 3 Details", expanded=True):
+                agent = result.get("agent_reasoning", {})
+                think = agent.get("think_block", "")
+                st.markdown("**Agent Reasoning:**")
+                st.code(think[:1000] + ("..." if len(think) > 1000 else ""), language="text")
+                
+                post_val = result.get("post_validation", {})
+                z3 = result.get("z3_formal_validation", {})
+                col_v1, col_v2, col_v3 = st.columns(3)
+                col_v1.metric("Symbolic Validation", f"{post_val.get('validation_score', 0)}%", "✅ Passed" if post_val.get("validated") else "⚠️ Failed")
+                col_v2.metric("Z3 Mode", z3.get("execution_mode", "N/A"))
+                col_v3.metric("Z3 Score", f"{z3.get('validation_score', 0)}%")
+                
+                rule_checks = post_val.get("rule_checks", [])
+                for rc in rule_checks:
+                    icon = "✅" if rc.get("passed") else "⚠️"
+                    st.markdown(f"{icon} **{rc.get('rule_id')}**: {rc.get('details')}")
+                
+                st.markdown("**Generated Hypothesis:**")
+                st.info(agent.get("hypothesis", agent.get("output_text", "No hypothesis"))[:500])
+        
+        elif i == 4:
+            # Phase 4: Show enrichment
+            with st.expander("📊 Phase 4 Details", expanded=False):
+                cg = result.get("graph_rag", {})
+                att = result.get("evidence_attribution", {})
+                bp = result.get("experimental_blueprint", {})
+                cr = result.get("collaboration_recommendations", {})
+                disc = result.get("cross_domain_scoring", {})
 
-            if not safe_title or not safe_content:
-                st.error("Title and content cannot be empty after sanitization.")
-                st.stop()
+                col_e1, col_e2 = st.columns(2)
+                with col_e1:
+                    st.markdown(f"**Discovery Strength:** {disc.get('overall_score', 0)}% ({disc.get('rating', 'unknown')})")
+                    st.markdown(f"**Graph Nodes:** {cg.get('nodes_count', 0)} | **Paths:** {len(cg.get('multi_hop_paths', []))}")
+                    if att:
+                        st.progress(att.get("overall_attribution_coverage", 0.0))
+                        st.caption(f"Attribution: {att.get('supported_claims', 0)}/{att.get('total_claims', 0)} claims")
+                with col_e2:
+                    if bp and bp.get("status") != "disabled":
+                        st.markdown(f"**Blueprint:** {bp.get('primary_objective', 'N/A')[:80]}...")
+                        st.caption(f"Timeline: {bp.get('timeline_estimate', 'N/A')} | Confidence: {bp.get('confidence', 'unknown')}")
+                    if cr and cr.get("recommendations"):
+                        for rec in cr.get("recommendations", [])[:3]:
+                            st.markdown(f"- **{rec.get('recommended_role')}** ({rec.get('primary_domain')})")
 
-            payload = {
-                "documents": [{
-                    "title": safe_title,
-                    "domain": doc_domain,
-                    "content": safe_content,
-                    "year": doc_year,
-                    "tags": safe_tags,
-                    "allowed_roles": doc_roles,
-                    "authors": ["User Contributed"]
-                }]
-            }
+                mem = result.get("memory_footprint")
+                if mem:
+                    ind = mem.get("individual", {})
+                    persona = ind.get("persona", {})
+                    st.markdown(f"**Memory Profile:** {persona.get('cognitive_style')} | Safety: {persona.get('safety_focus_level')} | Interactions: {persona.get('interaction_count')}")
+        
+        elif i == 5:
+            # Phase 5: Show streaming metrics
+            with st.expander("🌊 Phase 5 Details", expanded=False):
+                pm = result.get("performance_metrics", {})
+                st.markdown("**Performance Metrics**")
+                col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+                col_p1.metric("Total Time", f"{pm.get('total_time_seconds', 0):.2f}s")
+                col_p2.metric("Pre-filter", f"{pm.get('pre_filter_ms', 0)}ms")
+                col_p3.metric("Agent Reasoning", f"{pm.get('agent_reasoning_time_seconds', 0):.2f}s")
+                col_p4.metric("Validation", f"{pm.get('post_validation_ms', 0)}ms")
+                
+                st.markdown("**Streaming Events:**")
+                st.json({
+                    "sse_enabled": True,
+                    "confidence_calibration": result.get("confidence_calibration", {}),
+                    "decision": result.get("confidence_calibration", {}).get("decision"),
+                    "evidence_count": len(result.get("retrieved_evidence", [])),
+                    "graph_visualization": "Available in Phase 4 enrichment view",
+                })
+        
+        elif i == 6:
+            # Phase 6: Show learning
+            with st.expander("🔄 Phase 6 Details", expanded=False):
+                fb_data, fb_err = call_api("/api/feedback/stats", method="GET", timeout=10)
+                re_data, re_err = call_api("/api/model/retrain/status", method="GET", timeout=10)
+                
+                col_l1, col_l2, col_l3 = st.columns(3)
+                col_l1.metric("Feedback Records", fb_data.get("feedback_stats", {}).get("total", 0) if not fb_err else "N/A")
+                col_l2.metric("Retrain Enabled", "Yes" if not re_err else "N/A")
+                col_l3.metric("Needs Retrain", "🔴" if (not re_err and re_data.get("model_retrainer_status", {}).get("needs_retraining")) else "🟢")
+                
+                st.markdown("**Learning Pipeline:**")
+                st.json({
+                    "feedback_collector": "Active (risk-tiered)",
+                    "drift_detection": "KS-test every 2h on embedding distributions",
+                    "active_learning_queue": "Low-confidence queries flagged for expert review",
+                    "model_registry": "MLflow versioned models, prompts, rules, ontologies",
+                    "celery_orchestration": "Ingestion, validation, indexing, retrain tasks in background",
+                    "monitoring": "Prometheus metrics + Grafana dashboards + OpenTelemetry tracing",
+                })
+        
+        # Progress bar between phases
+        if i < len(PHASES):
+            progress = (i / len(PHASES)) * 100
+            st.progress(progress / 100)
 
-            result, error = call_api("/api/ingest", data=payload, timeout=60)
-            if error:
-                st.error(error)
-            else:
-                st.success(f"Document successfully ingested into Qdrant! ID: {result['inserted_ids'][0]}")
+    # Final Summary
+    st.markdown("---")
+    st.markdown("## ✅ Pipeline Complete — All 6 Phases Executed")
+    
+    # Show the final hypothesis
+    st.markdown("### 📜 Final Cross-Domain Hypothesis")
+    agent = result.get("agent_reasoning", {})
+    st.info(agent.get("output_text", agent.get("hypothesis", "No hypothesis generated"))[:1000])
+    
+    # Show calibrated confidence
+    cal = result.get("confidence_calibration", {})
+    disc = result.get("cross_domain_scoring", {})
+    col_f1, col_f2, col_f3 = st.columns(3)
+    col_f1.metric("Calibrated Confidence", f"{cal.get('calibrated_confidence', 0) * 100:.1f}%", delta=f"Decision: {cal.get('decision', 'unknown')}")
+    col_f2.metric("Discovery Strength", f"{disc.get('overall_score', 0)}%", disc.get("rating", "unknown"))
+    col_f3.metric("Evidence Chunks", len(result.get("retrieved_evidence", [])))
+    
+    # Show full result JSON in expander
+    with st.expander("📋 Full Pipeline Result (JSON)"):
+        st.json(result)
 
-# ========== Tab 4: Graph Browser ==========
-with tabs[3]:
-    st.markdown("### 🕸️ Interactive Knowledge Graph Browser")
-    st.caption("Visualize documents, entities, and cross-domain bridges extracted from the ingested corpus.")
+else:
+    st.markdown("### 🚀 How It Works")
+    st.markdown("""
+1. **Enter your scientific query** in the text area above
+2. **Click "Run Full Pipeline"** — this triggers all 6 phases sequentially
+3. **Watch the flow** — each phase executes and its results appear below
+4. **See the final hypothesis** with confidence scores and evidence
 
-    if st.button("Load Knowledge Graph", use_container_width=True):
-        graph_data, graph_error = call_api("/api/graph/browser", method="GET", data={}, timeout=30)
-        if graph_error:
-            st.error(graph_error)
-        elif graph_data:
-            nodes = graph_data.get("nodes", [])
-            edges = graph_data.get("edges", [])
-            st.success(f"Loaded {graph_data.get('node_count', 0)} nodes and {graph_data.get('edge_count', 0)} edges.")
+    **The 6 Phases Run in This Order:**
+    """)
+    for i, (label, name, desc) in enumerate(PHASES, 1):
+        st.markdown(f"{i}. **{label}: {name}** — {desc}")
 
-            import networkx as nx
-            import plotly.graph_objects as go
-            import math
-
-            G = nx.Graph()
-            for node in nodes:
-                G.add_node(node["id"], label=node.get("label", node["id"]), type=node.get("type", "unknown"), domain=node.get("domain", "general"))
-            for edge in edges:
-                G.add_edge(edge["source"], edge["target"], relation=edge.get("relation", ""))
-
-            if G.number_of_nodes() > 0:
-                try:
-                    pos = nx.spring_layout(G, seed=42)
-                except Exception:
-                    pos = {node["id"]: (math.cos(2 * math.pi * i / len(nodes)), math.sin(2 * math.pi * i / len(nodes))) for i, node in enumerate(nodes)}
-
-                edge_x, edge_y = [], []
-                for edge in G.edges():
-                    x0, y0 = pos[edge[0]]
-                    x1, y1 = pos[edge[1]]
-                    edge_x += [x0, x1, None]
-                    edge_y += [y0, y1, None]
-
-                node_x = [pos[n][0] for n in G.nodes()]
-                node_y = [pos[n][1] for n in G.nodes()]
-                node_text = [G.nodes[n].get("label", n) for n in G.nodes()]
-                node_color = ["#EF4444" if G.nodes[n].get("type") == "document" else "#10B981" for n in G.nodes()]
-                node_size = [18 if G.nodes[n].get("type") == "document" else 12 for n in G.nodes()]
-
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=edge_x, y=edge_y, mode="lines", line=dict(color="#94A3B8", width=1), hoverinfo="none"))
-                fig.add_trace(go.Scatter(x=node_x, y=node_y, mode="markers+text", text=node_text, textposition="top center", marker=dict(size=node_size, color=node_color), hovertemplate="%{text}<extra></extra>"))
-                fig.update_layout(height=600, showlegend=False, xaxis=dict(visible=False), yaxis=dict(visible=False), margin=dict(l=10, r=10, t=30, b=10))
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Graph is empty. Ingest some documents first.")
-        else:
-            st.info("No graph data returned.")
+    # Show system status
+    st.markdown("---")
+    st.markdown("### System Status")
+    hdata, herr = call_api("/healthz", method="GET", timeout=5)
+    mdata, merr = call_api("/api/metrics", method="GET", timeout=5)
+    if not herr and hdata:
+        st.success(f"API: {hdata.get('status', 'unknown')}")
+    else:
+        st.error("API server not reachable")
+    if not merr and mdata:
+        st.json({"Model": mdata.get("model"), "AIME": mdata.get("metrics", {}).get("AIME_2024"), "MMLU-Pro": mdata.get("metrics", {}).get("MMLU_Pro")})

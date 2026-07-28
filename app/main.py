@@ -18,6 +18,13 @@ from ingestion.dynamic_connectors import get_dynamic_connectors
 from ingestion.ingestion_cache import get_ingestion_cache
 from ingestion.active_learning import get_active_learning_engine
 from reasoning.risk_feedback import get_risk_feedback_engine
+from reasoning.query_cache import get_query_cache
+from ingestion.queue_manager import get_queue_manager
+from reasoning.benchmark_collector import get_benchmark_collector
+from reasoning.feedback_collector import get_feedback_collector
+from reasoning.rule_engine import get_rule_engine
+from reasoning.rule_updater import get_rule_updater
+from reasoning.retrainer import get_model_retrainer
 from app.observability import configure_logging, record_request, prometheus_payload, QUERIES
 
 configure_logging()
@@ -323,3 +330,70 @@ async def submit_risk_feedback(payload: Dict[str, Any]):
         evidence_domains=payload.get("evidence_domains", []),
     )
     return {"status": "recorded", "entry": entry}
+
+@app.get("/api/query/cache")
+async def get_query_cache_stats():
+    qc = get_query_cache()
+    logger.info("Query cache stats requested")
+    return {"status": "success", "query_cache_size": qc.size()}
+
+@app.get("/api/queue/stats")
+async def get_queue_stats():
+    qm = get_queue_manager()
+    stats = qm.get_stats()
+    logger.info(f"Ingestion queue stats requested: {stats}")
+    return {"status": "success", "queue_stats": stats}
+
+@app.get("/api/benchmark")
+async def get_benchmark_summary():
+    bc = get_benchmark_collector()
+    summary = bc.get_summary()
+    logger.info("Benchmark summary requested")
+    return {"status": "success", "benchmark_summary": summary}
+
+@app.get("/api/feedback/stats")
+async def get_feedback_stats():
+    fc = get_feedback_collector()
+    stats = fc.get_stats()
+    logger.info("Feedback collector stats requested")
+    return {"status": "success", "feedback_stats": stats}
+
+@app.get("/api/rule-engine/status")
+async def get_rule_engine_status():
+    engine = get_rule_engine()
+    log = engine.get_log()
+    stats = {
+        "rule_count": len(engine.rules),
+        "log_entries": len(log),
+        "rules": [r.get("rule_id") for r in engine.rules],
+    }
+    logger.info("Rule engine status requested")
+    return {"status": "success", "rule_engine_stats": stats}
+
+@app.get("/api/rule-updater/rules")
+async def get_custom_rules():
+    ru = get_rule_updater()
+    rules = ru.get_rules()
+    logger.info(f"Custom rules list requested: {len(rules)} rules")
+    return {"status": "success", "rules": rules}
+
+@app.post("/api/rule-updater/rules")
+async def add_custom_rule(payload: Dict[str, Any]):
+    ru = get_rule_updater()
+    success = ru.add_rule(payload)
+    logger.info(f"Custom rule {'added' if success else 'update failed'}: {payload.get('rule_id', 'unknown')}")
+    return {"status": "success" if success else "updated", "rule_id": payload.get("rule_id")}
+
+@app.delete("/api/rule-updater/rules/{rule_id}")
+async def remove_custom_rule(rule_id: str):
+    ru = get_rule_updater()
+    success = ru.remove_rule(rule_id)
+    logger.info(f"Custom rule removal requested: {rule_id} success={success}")
+    return {"status": "success" if success else "not_found", "rule_id": rule_id}
+
+@app.get("/api/model/retrain/status")
+async def get_model_retrain_status():
+    retrainer = get_model_retrainer()
+    status = retrainer.get_status()
+    logger.info("Model retrainer status requested")
+    return {"status": "success", "model_retrainer_status": status}

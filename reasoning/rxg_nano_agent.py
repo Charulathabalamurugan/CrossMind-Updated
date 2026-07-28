@@ -1,6 +1,7 @@
 import re
 import json
 import logging
+import socket
 from typing import List, Dict, Any, Generator
 from config import settings
 
@@ -19,12 +20,23 @@ You are specialized in neuro-symbolic reasoning for cross-domain scientific disc
 You reason carefully before responding and prioritize factual accuracy.
 
 CRITICAL INSTRUCTIONS:
-1. Always enclose your step-by-step intermediate reasoning in explicit native `<think>` and `</think>` tags.
+1. Always enclose your step-by-step intermediate reasoning in explicit native `</think>` and `</think>` tags.
 2. If semantic search in Qdrant is needed, emit a `<tool_call>` tag like:
-   <tool_call> Semantic search in Qdrant for: "search query" </tool_call>
+    `调用 Semantic search in Qdrant for: "search query" `调用
 3. Formulate structured, actionable, and scientific hypothesis with clear cross-domain connections, supporting evidence, and confidence score.
 4. Always respond in the user's language (English or Spanish).
 """
+
+def _vllm_reachable(base_url: str, timeout: float = 1.0) -> bool:
+    try:
+        parsed = httpx.URL(base_url) if HTTPX_AVAILABLE else None
+        if parsed and parsed.host:
+            sock = socket.create_connection((parsed.host, parsed.port or 80), timeout=timeout)
+            sock.close()
+            return True
+    except Exception:
+        pass
+    return False
 
 class YuukiRxGNanoAgent:
     """
@@ -36,6 +48,16 @@ class YuukiRxGNanoAgent:
         self.temperature = settings.RXG_NANO_TEMPERATURE
         self.max_tokens = settings.RXG_NANO_MAX_TOKENS
         self.use_simulator_fallback = settings.USE_LOCAL_SIMULATOR_FALLBACK
+        self._vllm_ready = None
+
+    def _is_vllm_ready(self):
+        if self._vllm_ready is not None:
+            return self._vllm_ready
+        if not HTTPX_AVAILABLE:
+            self._vllm_ready = False
+            return False
+        self._vllm_ready = _vllm_reachable(self.api_base)
+        return self._vllm_ready
 
     def reason_and_synthesize(
         self,
@@ -46,10 +68,9 @@ class YuukiRxGNanoAgent:
     ) -> Dict[str, Any]:
         """
         Executes neuro-reasoning over user query and retrieved Qdrant evidence.
-        Returns explicit <think> block, synthesized hypothesis, citations, and confidence score.
+        Returns explicit `推理` block, synthesized hypothesis, citations, and confidence score.
         """
-        # Try real OpenAI / vLLM API server if available
-        if HTTPX_AVAILABLE:
+        if not self.use_simulator_fallback and self._is_vllm_ready() and HTTPX_AVAILABLE:
             try:
                 prompt_content = self._build_prompt(query, retrieved_evidence, filter_metadata, graph_context)
                 response = httpx.post(
@@ -63,16 +84,14 @@ class YuukiRxGNanoAgent:
                         "temperature": self.temperature,
                         "max_tokens": self.max_tokens
                     },
-                    timeout=5.0
+                    timeout=2.0
                 )
                 if response.status_code == 200:
                     data = response.json()
                     raw_text = data["choices"][0]["message"]["content"]
                     return self._parse_agent_output(raw_text, retrieved_evidence)
             except Exception as e:
-                logger.debug(f"vLLM/OpenAI endpoint not reachable at {self.api_base} ({e}). Using native Yuuki RxG Nano inference simulator.")
-
-        # Native Yuuki RxG Nano inference engine simulator
+                logger.debug(f"vLLM call failed: {e}")
         return self._simulate_rxg_nano_reasoning(query, retrieved_evidence, filter_metadata)
 
     def stream_reasoning(

@@ -85,6 +85,8 @@ class Settings(BaseSettings):
     # ========== Ingestion Cache Settings ==========
     INGESTION_CACHE_TTL_SECONDS: int = int(os.getenv("INGESTION_CACHE_TTL_SECONDS", "3600"))
     INGESTION_CACHE_MAX_ITEMS: int = int(os.getenv("INGESTION_CACHE_MAX_ITEMS", "10000"))
+    CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "512"))
+    CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "64"))
 
     # ========== Advanced Reasoning Settings ==========
     MULTI_AGENT_ENABLED: bool = os.getenv("MULTI_AGENT_ENABLED", "True").lower() == "true"
@@ -92,6 +94,72 @@ class Settings(BaseSettings):
     DUAL_MEMORY_ENABLED: bool = os.getenv("DUAL_MEMORY_ENABLED", "True").lower() == "true"
     EXPERIMENTAL_BLUEPRINT_ENABLED: bool = os.getenv("EXPERIMENTAL_BLUEPRINT_ENABLED", "True").lower() == "true"
     RISK_FEEDBACK_ENABLED: bool = os.getenv("RISK_FEEDBACK_ENABLED", "True").lower() == "true"
+
+    # ========== Phase 1: Retrieval Settings ==========
+    BGE_M3_ENABLED: bool = os.getenv("BGE_M3_ENABLED", "True").lower() == "true"
+    MINERU_EXTRACTION_ENABLED: bool = os.getenv("MINERU_EXTRACTION_ENABLED", "True").lower() == "true"
+    TIKA_FALLBACK_ENABLED: bool = os.getenv("TIKA_FALLBACK_ENABLED", "True").lower() == "true"
+    DOMAIN_QDRANT_COLLECTIONS: bool = os.getenv("DOMAIN_QDRANT_COLLECTIONS", "False").lower() == "true"
+    REDIS_QUERY_CACHE_TTL: int = int(os.getenv("REDIS_QUERY_CACHE_TTL", "3600"))
+    REDIS_QUERY_CACHE_MAX: int = int(os.getenv("REDIS_QUERY_CACHE_MAX", "5000"))
+    BM25_EARLY_TERMINATION_THRESHOLD: float = float(os.getenv("BM25_EARLY_TERMINATION_THRESHOLD", "0.95"))
+    PRODUCT_QUANTIZATION_ENABLED: bool = os.getenv("PRODUCT_QUANTIZATION_ENABLED", "True").lower() == "true"
+    FALLBACK_DOMAIN: str = os.getenv("FALLBACK_DOMAIN", "general")
+    INDEX_UPDATE_INTERVAL_HOURS: int = int(os.getenv("INDEX_UPDATE_INTERVAL_HOURS", "4"))
+    FULL_REINDEX_INTERVAL_HOURS: int = int(os.getenv("FULL_REINDEX_INTERVAL_HOURS", "168"))
+
+    # ========== Phase 2: Validation Settings ==========
+    GLiNER_ENABLED: bool = os.getenv("GLiNER_ENABLED", "True").lower() == "true"
+    DATALOG_RULES_ENABLED: bool = os.getenv("DATALOG_RULES_ENABLED", "True").lower() == "true"
+    OPA_ENABLED: bool = os.getenv("OPA_ENABLED", "False").lower() == "true"
+    ACTIVE_LEARNING_QUEUE_ENABLED: bool = os.getenv("ACTIVE_LEARNING_QUEUE_ENABLED", "True").lower() == "true"
+    TREEINTERPRETER_ENABLED: bool = os.getenv("TREEINTERPRETER_ENABLED", "True").lower() == "true"
+    PRIMARY_ONTOLOGY: str = os.getenv("PRIMARY_ONTOLOGY", "UMLS")
+    ONTOLOGY_FALLBACKS: str = os.getenv("ONTOLOGY_FALLBACKS", "MGI,ChEBI")
+
+    # ========== Phase 3: Reasoning Settings ==========
+    NEO4J_ENABLED: bool = os.getenv("NEO4J_ENABLED", "False").lower() == "true"
+    NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+    NEO4J_USER: str = os.getenv("NEO4J_USER", "neo4j")
+    NEO4J_PASSWORD: str = os.getenv("NEO4J_PASSWORD", "")
+    WFAA_FAST_PATH_ENABLED: bool = os.getenv("WFAA_FAST_PATH_ENABLED", "True").lower() == "true"
+    FAST_PATH_CONFIDENCE_THRESHOLD: float = float(os.getenv("FAST_PATH_CONFIDENCE_THRESHOLD", "0.85"))
+    DEEPSEEK_R1_ENABLED: bool = os.getenv("DEEPSEEK_R1_ENABLED", "False").lower() == "true"
+    DEEPSEEK_R1_API_BASE: str = os.getenv("DEEPSEEK_R1_API_BASE", "http://localhost:8000")
+    DEEPSEEK_R1_MODEL: str = os.getenv("DEEPSEEK_R1_MODEL", "deepseek-r1-distill-qwen-14b")
+    DEEPSEEK_R1_QUANTIZATION: str = os.getenv("DEEPSEEK_R1_QUANTIZATION", "4bit")
+    vLLM_ENABLED: bool = os.getenv("vLLM_ENABLED", "False").lower() == "true"
+    vLLM_BATCH_SIZE: int = int(os.getenv("vLLM_BATCH_SIZE", "8"))
+    GRAPH_RAG_DEPTH: int = int(os.getenv("GRAPH_RAG_DEPTH", "3"))
+    ABDUCTIVE_TOP_K: int = int(os.getenv("ABDUCTIVE_TOP_K", "5"))
+
+    # ========== Phase 4: Learning Settings ==========
+    STREAMING_SSE_ENABLED: bool = os.getenv("STREAMING_SSE_ENABLED", "True").lower() == "true"
+    DLDB_ENABLED: bool = os.getenv("DLDB_ENABLED", "True").lower() == "true"
+    ACTIVE_LEARNING_EXPERT_QUEUE_ENABLED: bool = os.getenv("ACTIVE_LEARNING_EXPERT_QUEUE_ENABLED", "True").lower() == "true"
+    DRIFT_DETECTION_ENABLED: bool = os.getenv("DRIFT_DETECTION_ENABLED", "True").lower() == "true"
+    DRIFT_DETECTION_INTERVAL_HOURS: int = int(os.getenv("DRIFT_DETECTION_INTERVAL_HOURS", "2"))
+    DRIFT_KS_THRESHOLD: float = float(os.getenv("DRIFT_KS_THRESHOLD", "0.05"))
+    DRIFT_ACCURACY_THRESHOLD: float = float(os.getenv("DRIFT_ACCURACY_THRESHOLD", "0.02"))
+    RETRAINING_ENABLED: bool = os.getenv("RETRAINING_ENABLED", "True").lower() == "true"
+    RETRAINING_VALIDATION_REQUIRED: bool = os.getenv("RETRAINING_VALIDATION_REQUIRED", "True").lower() == "true"
+    PROMETHEUS_ENABLED: bool = os.getenv("PROMETHEUS_ENABLED", "True").lower() == "true"
+    GRAFANA_ENABLED: bool = os.getenv("GRAFANA_ENABLED", "True").lower() == "true"
+    OPENTELEMETRY_ENABLED: bool = os.getenv("OPENTELEMETRY_ENABLED", "True").lower() == "true"
+    HOT_CACHE_ENABLED: bool = os.getenv("HOT_CACHE_ENABLED", "True").lower() == "true"
+    DISK_CACHE_ENABLED: bool = os.getenv("DISK_CACHE_ENABLED", "True").lower() == "true"
+    SLINKY_OPERATOR_ENABLED: bool = os.getenv("SLINKY_OPERATOR_ENABLED", "False").lower() == "true"
+    MLFLOW_REGISTRY_ENABLED: bool = os.getenv("MLFLOW_REGISTRY_ENABLED", "True").lower() == "true"
+    MLFLOW_TRACKING_URI: str = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+    POSTGRES_ENABLED: bool = os.getenv("POSTGRES_ENABLED", "True").lower() == "true"
+    POSTGRES_URL: str = os.getenv("POSTGRES_URL", "postgresql://crossmind:crossmind@localhost:5432/crossmind")
+    S3_ENABLED: bool = os.getenv("S3_ENABLED", "False").lower() == "true"
+    S3_BUCKET: str = os.getenv("S3_BUCKET", "crossmind-cold-storage")
+    S3_ENDPOINT: str = os.getenv("S3_ENDPOINT", "http://localhost:9000")
+    CELERY_ENABLED: bool = os.getenv("CELERY_ENABLED", "True").lower() == "true"
+    CELERY_BROKER_URL: str = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/1")
+    MODEL_REGISTRY_ENABLED: bool = os.getenv("MODEL_REGISTRY_ENABLED", "True").lower() == "true"
+    MODEL_REGISTRY_URI: str = os.getenv("MODEL_REGISTRY_URI", "http://localhost:5000/registry")
 
     class Config:
         env_file = ".env"
