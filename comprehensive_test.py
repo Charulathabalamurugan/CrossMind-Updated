@@ -67,7 +67,7 @@ except Exception as e:
 # ========================
 print("\n[TEST GROUP 3] English Query Processing")
 try:
-    q = "Find cross-domain links between Alzheimer biomarkers and nanomaterials"
+    q = "Find cross-domain connections between energy and financial markets"
     r = requests.post(f"{API_BASE}/api/query", json={"query": q, "user_role": "researcher"}, timeout=60)
     test("English query returns 200", r.status_code == 200)
     d = r.json()
@@ -152,7 +152,7 @@ except Exception as e:
 # ========================
 print("\n[TEST GROUP 6] RBAC Role-Based Access Control")
 try:
-    q = "How do lipid nanoparticles cross the blood-brain barrier?"
+    q = "How do energy storage systems integrate with financial markets?"
     
     # Admin role
     r = requests.post(f"{API_BASE}/api/query", json={"query": q, "user_role": "admin"}, timeout=60)
@@ -225,7 +225,7 @@ except Exception as e:
 
 # Test very long query
 try:
-    long_q = "Find links between " + "Alzheimer " * 50 + " and nanomaterials"
+    long_q = "Find links between " + "Energy " * 50 + " and nanomaterials"
     r = requests.post(f"{API_BASE}/api/query", json={"query": long_q[:1000], "user_role": "researcher"}, timeout=60)
     test("Long query processes", r.status_code == 200)
 except Exception as e:
@@ -234,7 +234,7 @@ except Exception as e:
 # Test bulk ingestion
 try:
     bulk_payload = {"documents": [
-        {"title": f"Bulk Test Doc {i}", "domain": "neuroscience" if i % 2 == 0 else "nanotechnology",
+        {"title": f"Bulk Test Doc {i}", "domain": "energy" if i % 2 == 0 else "finance",
          "content": f"This is bulk test document number {i} for testing ingestion pipeline capacity.",
          "year": 2024, "tags": ["bulk", "test"], "allowed_roles": ["public"], "authors": ["Bulk Tester"]}
         for i in range(3)

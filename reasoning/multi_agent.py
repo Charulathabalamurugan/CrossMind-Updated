@@ -50,7 +50,7 @@ class MultiAgentOrchestrator:
             return self._agents[domain]
 
     def parallel_process(self, query: str, evidence: List[Dict[str, Any]], filter_metadata: Dict[str, Any], max_workers: int = 4) -> Dict[str, Any]:
-        domains = filter_metadata.get("detected_domains", ["neuroscience", "nanotechnology"])
+        domains = filter_metadata.get("detected_domains", [])
         agents = []
         seen = set()
         for domain in domains:

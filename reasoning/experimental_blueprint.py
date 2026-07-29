@@ -46,7 +46,7 @@ class ExperimentalBlueprintGenerator:
             "risk_mitigations": self._build_risks(domains),
             "timeline_estimate": (
                 "12-18 months"
-                if any(d in domains for d in ["nanotechnology", "pharmacology"])
+                if any(d in domains for d in ["pharmacology", "energy", "materials", "climate"])
                 else "6-12 months"
             ),
             "readouts": self._build_readouts(domains),
@@ -162,7 +162,7 @@ class ExperimentalBlueprintGenerator:
 
     def _build_risks(self, domains: List[str]) -> List[str]:
         risks = [
-            "Batch variability in nanomaterial synthesis; implement GMP-like SOPs and QC gates."
+            "Variability in synthesis protocols; implement standardized SOPs and QC gates."
         ]
         if "neuroscience" in domains:
             risks.append(

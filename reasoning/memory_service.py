@@ -26,7 +26,7 @@ class MemoryService:
         # Domain Memory
         self.domain_memory: Dict[str, int] = {
             "neuroscience": 0,
-            "nanotechnology": 0,
+            "nanotechnology": 0, "materials": 0, "energy": 0, "climate": 0, "finance": 0, "psychology": 0,
             "pharmacology": 0,
             "general": 0
         }

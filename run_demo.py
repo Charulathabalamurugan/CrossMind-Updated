@@ -29,20 +29,20 @@ def main():
     print("\n[PHASE 1 & 2] Ingesting multimodal scientific literature & initializing Qdrant vector store...")
     SAMPLE_SCIENTIFIC_KNOWLEDGE = [
         {
-            "id": "doc_alz_01",
-            "title": "Amyloid-Beta 42 and Tau Protein Aggregation Kinetics in Early Alzheimer's Disease",
-            "content": "Aβ42 soluble oligomers induce microglial activation and oxidative stress pathways in cortical neurons. Hyperphosphorylated Tau accumulation leads to microtubule disassembly and axonal transport disruption. Key biomolecules: Aβ42, Tau, APOE4.",
-            "domain": "neuroscience",
+            "id": "doc_energy_01",
+            "title": "Solid-State Battery Technology for Grid-Scale Energy Storage",
+            "content": "Solid-state batteries using ceramic electrolytes achieve 500 Wh/kg energy density, enabling grid-scale renewable energy storage without lithium supply chain dependencies. Key materials: ceramic electrolyte, lithium metal anode, sulfide solid electrolyte.",
+            "domain": "energy",
             "year": 2023,
             "authors": ["Dr. S. Chen", "Dr. A. Miller"],
             "allowed_roles": ["public", "researcher"],
             "tags": ["Alzheimer's", "Aβ42", "Tau", "neurodegeneration", "biomarkers"]
         },
         {
-            "id": "doc_alz_02",
-            "title": "APOE4 Allele Regulation of Neuroinflammation and Blood-Brain Barrier Leakage",
-            "content": "Apolipoprotein E4 (APOE4) compromises blood-brain barrier (BBB) integrity via the CypA-NFkB pathway in pericytes, impairing clearance of toxic amyloid proteins and exacerbating central neuroinflammation.",
-            "domain": "neuroscience",
+            "id": "doc_finance_01",
+            "title": "Quantum Computing Investment Trends and Financial Sector Disruption",
+            "content": "Quantum computing startups are attracting billions in venture capital as financial institutions explore quantum-resistant cryptography and portfolio optimization algorithms. Key areas: post-quantum cryptography, algorithmic trading, risk modeling.",
+            "domain": "finance",
             "year": 2022,
             "authors": ["Dr. R. Zlokovic", "Dr. B. Zhao"],
             "allowed_roles": ["public", "researcher"],
@@ -94,7 +94,7 @@ def main():
     print("[SUCCESS] Literature vectors indexed in Qdrant with DSKE embeddings.")
 
     # Phase 3 & 4: Run reasoning query
-    query = "Find cross-domain links between Alzheimer's biomarkers and nanomaterials"
+    query = "Find cross-domain connections between energy storage and financial markets"
     if len(sys.argv) > 1:
         query = sys.argv[1]
 
@@ -122,7 +122,7 @@ def main():
         print(f"    {i}. [{ev['id']}] {payload.get('title')} (Score: {ev['score']:.4f})")
 
     # Display Step 3b: ZAYA1-8B (8.4B MoE) Native <think> Block
-    print(f"\n[STEP 3b: YUUKI RxG NANO AGENTIC REASONING (~2-4s)]")
+    print(f"\n[STEP 3b: ZAYA1-8B AGENTIC REASONING (~1-2s)]")
     print("┌" + "─" * 78 + "┐")
     print("│ Native <think> Intermediate Reasoning Block:")
     for line in result['agent_reasoning']['think_block'].split('\n'):

@@ -139,7 +139,7 @@ class DocumentIngestRequest(BaseModel):
         return docs
 
 class QueryRequest(BaseModel):
-    query: str = Field(..., example="Find cross-domain links between Alzheimer's biomarkers and nanomaterials")
+    query: str = Field(..., example="Find cross-domain connections between energy storage and financial markets")
     user_role: str = Field("researcher", example="researcher")
     confidence_proceed_threshold: float = Field(0.75, ge=0.0, le=1.0)
     confidence_investigate_threshold: float = Field(0.50, ge=0.0, le=1.0)

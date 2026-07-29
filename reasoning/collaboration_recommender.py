@@ -13,11 +13,12 @@ class CollaborationRecommender:
                 "Computational Neuroscientist",
                 "Clinical Neurologist",
             ],
-            "nanotechnology": [
-                "Nanomaterials Scientist",
-                "Nanomedicine Engineer",
-                "Physical Chemist",
-            ],
+"materials_science": [
+        "Materials Scientist",
+        "Materials Engineer",
+        "Polymer Chemist",
+        "Nanomaterials Researcher",
+    ],
             "pharmacology": [
                 "Pharmacologist",
                 "Medicinal Chemist",
@@ -77,7 +78,7 @@ class CollaborationRecommender:
                             ),
                             "suggested_stage": (
                                 "early"
-                                if domain in ["nanotechnology", "neuroscience"]
+                                if domain in ["neuroscience", "materials_science", "nanotechnology", "pharmacology"]
                                 else "validation"
                             ),
                         }

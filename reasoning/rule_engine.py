@@ -8,7 +8,7 @@ logger = logging.getLogger("crossmind.rule_engine")
 VALIDATION_RULES: List[Dict[str, Any]] = [
     {
         "rule_id": "BIOCOMPATIBILITY_CHECK",
-        "description": "Nanomaterials for CNS delivery must show low cytotoxicity profile.",
+        "description": "Materials for CNS delivery must show low cytotoxicity profile.",
         "keywords_positive": ["biocompatible", "non-toxic", "PEGylated", "lipid", "functionalized"],
         "keywords_negative": ["toxic", "cytotoxic", "lethal"],
         "penalty": 15.0,
@@ -33,7 +33,7 @@ VALIDATION_RULES: List[Dict[str, Any]] = [
     },
     {
         "rule_id": "SAFETY_THRESHOLD",
-        "description": "Safety-related terms must be present in nanotechnology hypotheses.",
+        "description": "Safety-related terms must be present in hypotheses.",
         "requires_safety_terms": True,
         "penalty": 20.0,
     },

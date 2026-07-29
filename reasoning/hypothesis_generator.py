@@ -7,16 +7,17 @@ logger = logging.getLogger("crossmind.hypothesis_generator")
 DECISION_TREE_RULES = [
     {
         "condition": lambda f: "nanoparticle" in str(f.get("detected_entities", [])).lower()
-        or "nanomaterial" in str(f.get("detected_entities", [])).lower(),
-        "domain": "nanotechnology",
+        or any(t in str(f.get("detected_entities", [])).lower() for t in ["nanomaterial", "material", "battery", "solar", "carbon"]),
+        "domain": "general",
         "template": "Nanocarrier-based delivery mechanism targeting {entity}.",
     },
     {
         "condition": lambda f: "protein" in str(f.get("detected_entities", [])).lower()
         or "biomarker" in str(f.get("detected_entities", [])).lower()
-        or any(tag in str(f.get("detected_entities", [])).lower() for tag in ["Alzheimer", "beta-amyloid", "tau", "amyloid"]),
-        "domain": "neuroscience",
-        "template": "Protein aggregation pathway modulated by {entity}.",
+        or "enzyme" in str(f.get("detected_entities", [])).lower()
+        or "catalyst" in str(f.get("detected_entities", [])).lower(),
+        "domain": "general",
+        "template": "Protein/biomarker pathway modulated by {entity}.",
     },
     {
         "condition": lambda f: "drug" in str(f.get("detected_entities", [])).lower()

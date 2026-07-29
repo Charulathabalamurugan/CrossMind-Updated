@@ -79,7 +79,7 @@ class Z3Validator:
     ) -> Dict[str, Any]:
         z3 = self.z3
         solver = z3.Solver()
-        has_nanomaterial = z3.Bool("has_nanomaterial")
+        has_relevant_entity = z3.Bool("has_relevant_entity")
         has_biocompatibility = z3.Bool("has_biocompatibility")
         temporal_ok = z3.Bool("temporal_ok")
         multi_domain = z3.Bool("multi_domain")
@@ -88,9 +88,9 @@ class Z3Validator:
             cl = claim.lower()
             if any(
                 kw in cl
-                for kw in ["nanomaterial", "nanoparticle", "lnp", "dendrimer"]
+                for kw in ["nanomaterial", "nanoparticle", "battery", "solar", "carbon", "material"]
             ):
-                solver.add(has_nanomaterial == True)
+                solver.add(has_relevant_entity == True)
             if any(
                 kw in cl
                 for kw in [

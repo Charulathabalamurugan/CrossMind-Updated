@@ -68,7 +68,7 @@ st.markdown('<div class="sub-title">All 6 Phases in a Single Flow — Click Run 
 st.markdown("### 📝 Enter Your Scientific Query")
 col_query, col_run = st.columns([3, 1])
 with col_query:
-    query_input = st.text_area("Query:", value="Find cross-domain links between Alzheimer's biomarkers and nanomaterials", height=80, key="single_flow_query")
+    query_input = st.text_area("Query:", value="Find cross-domain connections between energy storage and financial markets", height=80, key="single_flow_query")
 with col_run:
     run_clicked = st.button("🚀 Run Full Pipeline", type="primary", use_container_width=True, key="run_pipeline")
 

@@ -4,7 +4,7 @@ import json
 queries = [
     "How do PEGylated PLGA nanoparticles target brain tumors?",
     "Buscar conexiones entre nanoparticulas de oro y el cancer cerebral",
-    "Explain the mechanism of ApoE-targeted lipid nanoparticles for Alzheimer therapy"
+    "Explain the mechanism of battery energy storage for financial risk management"
 ]
 
 for q in queries:

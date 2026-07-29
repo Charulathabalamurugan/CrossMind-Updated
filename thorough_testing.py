@@ -102,7 +102,7 @@ except Exception as e:
 
 # Full query endpoint
 try:
-    q = "Alzheimer biomarkers nanomaterials"
+    q = "energy finance cross-domain"
     start = time.time()
     r = requests.post(f"{API_BASE}/api/query", json={"query": q, "user_role": "researcher"}, timeout=60)
     elapsed = time.time() - start
