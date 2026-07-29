@@ -56,11 +56,24 @@ class Settings(BaseSettings):
     QDRANT_IN_MEMORY: bool = os.getenv("QDRANT_IN_MEMORY", "True").lower() == "true"
     QDRANT_COLLECTION_NAME: str = os.getenv("QDRANT_COLLECTION_NAME", "crossmind_knowledge")
 
-    # ========== Yuuki RxG Nano Agent settings ==========
-    RXG_NANO_MODEL_NAME: str = os.getenv("RXG_NANO_MODEL_NAME", "OpceanAI/Yuuki-RxG-nano")
-    RXG_NANO_API_BASE: str = os.getenv("RXG_NANO_API_BASE", "http://localhost:8000/v1")
-    RXG_NANO_TEMPERATURE: float = float(os.getenv("RXG_NANO_TEMPERATURE", "0.2"))
-    RXG_NANO_MAX_TOKENS: int = int(os.getenv("RXG_NANO_MAX_TOKENS", "4096"))
+        # ========== ZAYA1-8B Agent settings ==========
+    ZAYA1_8B_MODEL_NAME: str = os.getenv("ZAYA1_8B_MODEL_NAME", "ZAYA1-8B")
+    ZAYA1_8B_API_BASE: str = os.getenv("ZAYA1_8B_API_BASE", "http://localhost:8000/v1")
+    ZAYA1_8B_TEMPERATURE: float = float(os.getenv("ZAYA1_8B_TEMPERATURE", "0.2"))
+    ZAYA1_8B_MAX_TOKENS: int = int(os.getenv("ZAYA1_8B_MAX_TOKENS", "131072"))
+    ZAYA1_8B_TOTAL_PARAMS: int = int(os.getenv("ZAYA1_8B_TOTAL_PARAMS", "8400000000"))
+    ZAYA1_8B_ACTIVE_PARAMS: int = int(os.getenv("ZAYA1_8B_ACTIVE_PARAMS", "760000000"))
+    ZAYA1_8B_QUANTIZATION: str = os.getenv("ZAYA1_8B_QUANTIZATION", "Q4_K_M")
+    ZAYA1_8B_MEMORY_FOOTPRINT_GB: float = float(os.getenv("ZAYA1_8B_MEMORY_FOOTPRINT_GB", "5.5"))
+    ZAYA1_8B_CONTEXT_LENGTH: int = int(os.getenv("ZAYA1_8B_CONTEXT_LENGTH", "131072"))
+    ZAYA1_8B_LICENSE: str = os.getenv("ZAYA1_8B_LICENSE", "Apache 2.0")
+    ZAYA1_8B_AIME_2026_SCORE: float = float(os.getenv("ZAYA1_8B_AIME_2026_SCORE", "89.1"))
+    ZAYA1_8B_MOE_ARCHITECTURE: bool = os.getenv("ZAYA1_8B_MOE_ARCHITECTURE", "True").lower() == "true"
+    ZAYA1_8B_MARKOVIAN_RSA: bool = os.getenv("ZAYA1_8B_MARKOVIAN_RSA", "True").lower() == "true"
+    ZAYA1_8B_COMPRESSED_ATTENTION: bool = os.getenv("ZAYA1_8B_COMPRESSED_ATTENTION", "True").lower() == "true"
+    ZAYA1_8B_NATIVE_THINK_BLOCKS: bool = os.getenv("ZAYA1_8B_NATIVE_THINK_BLOCKS", "True").lower() == "true"
+    ZAYA1_8B_VLLM_ENABLED: bool = os.getenv("ZAYA1_8B_VLLM_ENABLED", "False").lower() == "true"
+    ZAYA1_8B_VLLM_BATCH_SIZE: int = int(os.getenv("ZAYA1_8B_VLLM_BATCH_SIZE", "8"))
     USE_LOCAL_SIMULATOR_FALLBACK: bool = os.getenv("USE_LOCAL_SIMULATOR_FALLBACK", "True").lower() == "true"
 
     # ========== Embedding settings ==========

@@ -51,7 +51,7 @@ class DLDB:
         doc_id: str,
         relevance_score: float,
         user_role: str,
-        model_version: str = "Yuuki-RxG-nano-v1",
+        model_version: str = "ZAYA1-8B-v1",
     ) -> Dict[str, Any]:
         entry = {
             "id": f"fb_{len(self._feedback):06d}",
@@ -71,7 +71,7 @@ class DLDB:
         with self._lock:
             return [f for f in self._feedback if f.get("relevance_score", 0.0) < threshold]
 
-    def compute_model_score(self, model_version: str = "Yuuki-RxG-nano-v1") -> float:
+    def compute_model_score(self, model_version: str = "ZAYA1-8B-v1") -> float:
         with self._lock:
             relevant = [f for f in self._feedback if f.get("model_version") == model_version]
             if not relevant:

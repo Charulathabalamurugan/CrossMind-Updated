@@ -51,12 +51,12 @@ proceed_threshold = st.sidebar.slider("Proceed threshold", min_value=0.50, max_v
 investigate_threshold = st.sidebar.slider("Investigate threshold", min_value=0.10, max_value=proceed_threshold, value=min(0.50, proceed_threshold), step=0.05)
 st.sidebar.markdown("---")
 st.sidebar.success("⚡ Single-Page Flow Mode")
-st.sidebar.subheader("🏆 Yuuki RxG Nano Metrics")
+st.sidebar.subheader("🏆 ZAYA1-8B Metrics")
 st.sidebar.markdown("""
-- **AIME 2024:** 80.0%
-- **TruthfulQA:** 89.6%
-- **MMLU-Pro:** 65.63%
-- **Train Cost:** < $15
+- **Total Params:** 8.4B (760M active MoE)
+- **AIME 2026:** 89.1%
+- **Context Window:** 131K tokens
+- **Quantization:** Q4_K_M (~5.5 GB)
 - **License:** Apache 2.0
 """)
 

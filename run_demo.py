@@ -21,7 +21,7 @@ from reasoning.neuro_symbolic_pipeline import get_neuro_symbolic_pipeline
 def main():
     print("=" * 80)
     print("CrossMind: Neuro-Symbolic AI Scientific Discovery Engine")
-    print("   Neural Brain: Yuuki RxG Nano (1.5B) [OpceanAI/Yuuki-RxG-nano]")
+    print("   Neural Brain: ZAYA1-8B (8.4B MoE) ")
     print("   Vector Retrieval Layer: Qdrant Engine (HNSW + Scalar Quantization)")
     print("=" * 80)
 
@@ -121,7 +121,7 @@ def main():
         payload = ev['payload']
         print(f"    {i}. [{ev['id']}] {payload.get('title')} (Score: {ev['score']:.4f})")
 
-    # Display Step 3b: Yuuki RxG Nano Native <think> Block
+    # Display Step 3b: ZAYA1-8B (8.4B MoE) Native <think> Block
     print(f"\n[STEP 3b: YUUKI RxG NANO AGENTIC REASONING (~2-4s)]")
     print("┌" + "─" * 78 + "┐")
     print("│ Native <think> Intermediate Reasoning Block:")

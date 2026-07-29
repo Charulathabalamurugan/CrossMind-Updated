@@ -4,7 +4,7 @@ from typing import Any, Dict, Generator, List, Optional
 from config import settings
 
 from reasoning.symbolic_filter import SymbolicPreFilter, SymbolicPostValidator
-from reasoning.rxg_nano_agent import YuukiRxGNanoAgent
+from reasoning.rxg_nano_agent import ZAYA1_8BAgent
 from vector_store.qdrant_engine import get_qdrant_engine
 from ingestion.embedding import get_embedder
 from reasoning.knowledge_graph import get_knowledge_graph, DiscoveryScorer, ConfidenceCalibrator
@@ -40,7 +40,7 @@ class NeuroSymbolicPipeline:
     def __init__(self):
         self.pre_filter = SymbolicPreFilter()
         self.post_validator = SymbolicPostValidator()
-        self.agent = YuukiRxGNanoAgent()
+        self.agent = ZAYA1_8BAgent()
         self.embedder = get_embedder()
         self.vector_engine = get_qdrant_engine()
         self.knowledge_graph = get_knowledge_graph()
@@ -224,7 +224,7 @@ class NeuroSymbolicPipeline:
                 query, retrieved_evidence, filter_metadata
             )
 
-        # Step 3b: Yuuki RxG Nano Reasoning
+        # Step 3b: ZAYA1-8B Reasoning
         start_reasoning = time.time()
         graph_seed_context = self.knowledge_graph.graph_rag_context(
             retrieved_evidence, filter_metadata.get("extracted_entities", [])
@@ -305,7 +305,7 @@ class NeuroSymbolicPipeline:
                 },
             },
             {
-                "event": "step_3b_rxg_nano_reasoning",
+                "event": "step_3b_zaya1_8b_reasoning",
                 "data": {
                     "stage": "pre_filter",
                     "delta": f"Symbolic Pre-Filter complete (<50ms). Identified domains: {', '.join(filter_metadata.get('detected_domains', []))}.",
@@ -313,11 +313,11 @@ class NeuroSymbolicPipeline:
                 },
             },
             {
-                "event": "step_3b_rxg_nano_reasoning",
+                "event": "step_3b_zaya1_8b_reasoning",
                 "data": {"stage": "thinking", "delta": agent_result["think_block"]},
             },
             {
-                "event": "step_3b_rxg_nano_reasoning",
+                "event": "step_3b_zaya1_8b_reasoning",
                 "data": {
                     "stage": "hypothesis_synthesis",
                     "delta": agent_result["output_text"],
@@ -420,7 +420,7 @@ class NeuroSymbolicPipeline:
             if "structured_result" in stream_chunk:
                 agent_result = stream_chunk["structured_result"]
             evt3 = {
-                "event": "step_3b_rxg_nano_reasoning",
+                "event": "step_3b_zaya1_8b_reasoning",
                 "data": stream_chunk,
             }
             events_recorded.append(evt3)

@@ -29,7 +29,7 @@ from reasoning.opa_enforcer import get_opa_enforcer
 
 # Phase 3: Reasoning Upgrades
 from reasoning.neo4j_graph import get_neo4j_store
-from reasoning.deepseek_agent import get_deepseek_agent
+from reasoning.deepseek_agent import get_zaya1_8b_agent
 from reasoning.abductive_engine_enhanced import get_enhanced_abductive_engine
 
 # Phase 4: Learning Upgrades

@@ -41,7 +41,7 @@ try:
     ok, missing = check_keys(d, ["project", "engine", "status", "version", "endpoints"])
     test("Root response has all required fields", ok, f"missing: {missing}" if missing else "")
     test("Engine status is 'online'", d.get("status") == "online")
-    test("Engine is Yuuki RxG Nano", "RxG" in d.get("engine", ""))
+    test("Engine is ZAYA1-8B", "ZAYA1" in d.get("engine", ""))
 except Exception as e:
     test("Root endpoint", False, str(e))
 

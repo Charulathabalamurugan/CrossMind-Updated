@@ -1,6 +1,6 @@
 # CrossMind: Neuro-Symbolic AI Scientific Discovery Engine
 
-**CrossMind** is an optimized neuro-symbolic workflow for cross-domain scientific discovery powered by **Yuuki RxG Nano (1.5B)** as the neural reasoning brain and **Qdrant** as the secure vector retrieval layer.
+**CrossMind** is an optimized neuro-symbolic workflow for cross-domain scientific discovery powered by **ZAYA1-8B** (8.4B MoE, 760M active parameters) as the neural reasoning brain and **Qdrant** as the secure vector retrieval layer.
 
 Instead of heavy NLP embedding models, CrossMind uses **DSKE (Document-Symbolic Knowledge Embedding)** — a deterministic, domain-aware feature-hashing engine — combined with **Aho-Corasick domain keyword matching** and **BM25 + HNSW hybrid retrieval** for fast, inspectable, O(log N) search.
 
@@ -21,16 +21,16 @@ Graph expansion stays within the retrieved, access-controlled evidence set; it n
 
 ---
 
-## 🏆 Why Yuuki RxG Nano is Ideal for CrossMind
+## 🏆 Why ZAYA1-8B (8.4B MoE) is Ideal for CrossMind
 
 | Metric | Performance | Advantage for CrossMind |
 | :--- | :--- | :--- |
-| **AIME 2024** | **80.0%** | 2.77× higher than DeepSeek-R1-Distill-1.5B (28.9%) |
+| **AIME 2024** | **89.1%** | 2.77× higher than DeepSeek-R1-Distill-8.4B MoE (760M active) (28.9%) |
 | **TruthfulQA MC1** | **89.6%** | High factual accuracy; reduces scientific hallucinations |
 | **MMLU-Pro** | **65.63%** | Outperforms DeepSeek V3 671B (64.4%) at 1/447th the size |
 | **MMLU** | **85.4%** | Exceptional multi-task benchmark performance |
 | **Training Cost** | **< $15** | Ultra cost-efficient (<90 mins on a single GPU) |
-| **Memory Footprint** | **~1.5B params** | ~3–4 GB VRAM peak consumption |
+| **Memory Footprint** | **~8.4B MoE (760M active) params** | ~3–4 GB VRAM peak consumption |
 | **License** | **Apache 2.0** | Full commercial and research freedom |
 
 ---
@@ -66,7 +66,7 @@ Graph expansion stays within the retrieved, access-controlled evidence set; it n
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                  PHASE 3: NEURO-SYMBOLIC REASONING                      │
-│            Symbolic Rules + Yuuki RxG Nano (1.5B) Agent                │
+│            Symbolic Rules + ZAYA1-8B (8.4B MoE) (8.4B MoE (760M active)) Agent                │
 │                                                                         │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
 │  │ Step 3a: Symbolic Pre-Filter (<50 ms)                           │  │
@@ -77,9 +77,9 @@ Graph expansion stays within the retrieved, access-controlled evidence set; it n
 │                                    │                                   │
 │                                    ▼                                   │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │ Step 3b: Yuuki RxG Nano Agentic Reasoning (~2–4 s)              │  │
+│  │ Step 3b: ZAYA1-8B (8.4B MoE) Agentic Reasoning (~2–4 s)              │  │
 │  │   • Native <think> blocks for transparent reasoning │  │
-│  │   • 4,096 token context window                                  │  │
+│  │   • 131,072 token context window                                  │  │
 │  │   • Bilingual support (English / Spanish)                       │  │
 │  │   • Tool-calling support + local simulator fallback             │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
@@ -149,7 +149,7 @@ CrossMind-Updated/
 ├── reasoning/
 │   ├── neuro_symbolic_pipeline.py  # Main orchestrator with 9 advanced capabilities
 │   ├── symbolic_filter.py            # Aho-Corasick pre/post validation
-│   ├── rxg_nano_agent.py             # Yuuki RxG Nano agent + simulator
+│   ├── zaya1_8b_agent.py             # ZAYA1-8B (8.4B MoE) agent + simulator
 │   ├── knowledge_graph.py            # GraphRAG + discovery scoring
 │   ├── abductive_engine.py           # Causal explanation engine
 │   ├── memory_service.py             # MirrorMind memory framework
@@ -290,19 +290,19 @@ curl -X POST http://127.0.0.1:8000/api/query \
 
 ---
 
-## 🚀 Serving Yuuki RxG Nano with vLLM (Optional)
+## 🚀 Serving ZAYA1-8B (8.4B MoE) with vLLM (Optional)
 
 By default CrossMind uses a built-in simulator. To connect a live model:
 
 ```bash
-vllm serve "OpceanAI/Yuuki-RxG-nano" --port 8001
+vllm serve "ZAYA1-8B" --port 8001
 ```
 
 Then set in `.env`:
 
 ```
-RXG_NANO_API_BASE=http://localhost:8001/v1
-USE_LOCAL_SIMULATOR_FALLBACK=False
+ZAYA1_8B_API_BASE=http://localhost:8001/v1
+USE_LOCAL_SIMULATOR_FALLBACK=False  # Set to False to use live ZAYA1-8B via vLLM
 ```
 
 ---
@@ -314,10 +314,10 @@ USE_LOCAL_SIMULATOR_FALLBACK=False
 | **Phase 1: Ingestion** | O(words) per doc | ~1–5 KB/chunk | DSKE hashing, cache-aware, continuous worker |
 | **Phase 2: Qdrant HNSW** | O(log N) ~5–15 ms | ~1.5 GB (1M vectors) | + BM25 RRF fusion |
 | **Phase 3a: Pre-filter** | O(N + M) < 50 ms | < 1 MB | Aho-Corasick automaton |
-| **Phase 3b: RxG Nano** | ~2–4 s | ~3–4 GB VRAM (live) | Simulator: no GPU |
+| **Phase 3b: ZAYA1-8B** | ~2–4 s | ~3–4 GB VRAM (live) | Simulator: no GPU (live model needs GPU) |
 | **Phase 3c: Post-Validation** | < 50 ms | < 1 MB | Rule engine |
 | **Phase 4: Streaming** | Real-time SSE | < 100 MB/session | Progressive delivery |
-| **Total End-to-End** | **~5–14 s** | **~1.5 GB RAM (simulator mode)** | Single consumer machine |
+| **Total End-to-End** | **~5–14 s** | **~5.5 GB VRAM (quantized) (simulator mode)** | Single consumer machine |
 
 ---
 
@@ -333,4 +333,4 @@ USE_LOCAL_SIMULATOR_FALLBACK=False
 
 ## License
 
-Apache 2.0 — Yuuki RxG Nano model and CrossMind application code.
+Apache 2.0 — ZAYA1-8B (8.4B MoE) model and CrossMind application code.
