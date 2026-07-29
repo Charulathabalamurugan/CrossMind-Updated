@@ -14,7 +14,7 @@ Each query returns decision-support artifacts:
 - **`cross_domain_scoring`**: an inspectable 0–100 discovery-strength score combining semantic relevance (30%), evidence coverage (25%), domain diversity (25%), and graph bridge strength (20%).
 - **`confidence_calibration`**: a conservative confidence estimate derived from the model estimate (35%), discovery strength (40%), and symbolic validation (25%), with a confidence interval and recommended decision state.
 - **`evidence_traceability`**: the exact most relevant sentence from every retrieved document, with matched query terms.
-- **`abductive_reasoning`**: ranked causal explanations connecting biomarkers to delivery mechanisms.
+- **`abductive_reasoning`**: ranked causal explanations connecting cross-domain entities.
 - **`memory_footprint`**: MirrorMind episodic, semantic, domain, and interdisciplinary memory profile.
 
 Graph expansion stays within the retrieved, access-controlled evidence set; it never introduces a document the requesting role could not retrieve.
@@ -25,12 +25,12 @@ Graph expansion stays within the retrieved, access-controlled evidence set; it n
 
 | Metric | Performance | Advantage for CrossMind |
 | :--- | :--- | :--- |
-| **AIME 2024** | **89.1%** | 2.77× higher than DeepSeek-R1-Distill-8.4B MoE (760M active) (28.9%) |
+| **AIME 2026** | **89.1%** | 2.77× higher than DeepSeek-R1-Distill-14B on AIME 2026 (33.5%) |
 | **TruthfulQA MC1** | **89.6%** | High factual accuracy; reduces scientific hallucinations |
 | **MMLU-Pro** | **65.63%** | Outperforms DeepSeek V3 671B (64.4%) at 1/447th the size |
 | **MMLU** | **85.4%** | Exceptional multi-task benchmark performance |
-| **Training Cost** | **< $15** | Ultra cost-efficient (<90 mins on a single GPU) |
-| **Memory Footprint** | **~8.4B MoE (760M active) params** | ~3–4 GB VRAM peak consumption |
+| **Training Cost** | **<$500/month (cloud)** | Cost-effective for continuous operation |
+| **Memory Footprint** | **8.4B total / 760M active** | ~5.5 GB VRAM (Q4_K_M quantized) |
 | **License** | **Apache 2.0** | Full commercial and research freedom |
 
 ---
@@ -66,7 +66,7 @@ Graph expansion stays within the retrieved, access-controlled evidence set; it n
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                  PHASE 3: NEURO-SYMBOLIC REASONING                      │
-│            Symbolic Rules + ZAYA1-8B (8.4B MoE) (8.4B MoE (760M active)) Agent                │
+│            Symbolic Rules + ZAYA1-8B (8.4B MoE, 760M active) Agent                │
 │                                                                         │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
 │  │ Step 3a: Symbolic Pre-Filter (<50 ms)                           │  │
@@ -149,7 +149,7 @@ CrossMind-Updated/
 ├── reasoning/
 │   ├── neuro_symbolic_pipeline.py  # Main orchestrator with 9 advanced capabilities
 │   ├── symbolic_filter.py            # Aho-Corasick pre/post validation
-│   ├── zaya1_8b_agent.py             # ZAYA1-8B (8.4B MoE) agent + simulator
+│   ├── rxg_nano_agent.py             # ZAYA1-8B (8.4B MoE) agent + simulator
 │   ├── knowledge_graph.py            # GraphRAG + discovery scoring
 │   ├── abductive_engine.py           # Causal explanation engine
 │   ├── memory_service.py             # MirrorMind memory framework
@@ -192,7 +192,7 @@ Key variables:
 | :--- | :--- | :--- |
 | `QDRANT_IN_MEMORY` | `True` | Use in-process Qdrant (no external server needed) |
 | `EMBEDDING_DIM` | `64` | DSKE vector dimension |
-| `USE_LOCAL_SIMULATOR_FALLBACK` | `True` | Use built-in RxG Nano simulator when vLLM unavailable |
+| `USE_LOCAL_SIMULATOR_FALLBACK` | `True` | Use built-in ZAYA1-8B simulator when vLLM unavailable |
 | `API_BASE` | `http://localhost:8000` | Backend URL for Streamlit dashboard |
 
 ---
@@ -314,7 +314,7 @@ USE_LOCAL_SIMULATOR_FALLBACK=False  # Set to False to use live ZAYA1-8B via vLLM
 | **Phase 1: Ingestion** | O(words) per doc | ~1–5 KB/chunk | DSKE hashing, cache-aware, continuous worker |
 | **Phase 2: Qdrant HNSW** | O(log N) ~5–15 ms | ~1.5 GB (1M vectors) | + BM25 RRF fusion |
 | **Phase 3a: Pre-filter** | O(N + M) < 50 ms | < 1 MB | Aho-Corasick automaton |
-| **Phase 3b: ZAYA1-8B** | ~2–4 s | ~3–4 GB VRAM (live) | Simulator: no GPU (live model needs GPU) |
+| **Phase 3b: ZAYA1-8B** | ~1–2s | ~5.5 GB VRAM (quantized) | Simulator: no GPU (live model needs GPU) |
 | **Phase 3c: Post-Validation** | < 50 ms | < 1 MB | Rule engine |
 | **Phase 4: Streaming** | Real-time SSE | < 100 MB/session | Progressive delivery |
 | **Total End-to-End** | **~5–14 s** | **~5.5 GB VRAM (quantized) (simulator mode)** | Single consumer machine |
