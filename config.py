@@ -138,7 +138,7 @@ class Settings(BaseSettings):
     SCALLOP_ENABLED: bool = os.getenv("SCALLOP_ENABLED", "False").lower() == "true"
     SCALLOP_PROGRAM: str = os.getenv("SCALLOP_PROGRAM", "")
     # Semara semantic grounding (Tech Mahindra SEMARA reference implementation)
-    SEMARA_ENABLED: bool = os.getenv("SEMARA_ENABLED", "False").lower() == "true"
+    SEMARA_ENABLED: bool = os.getenv("SEMARA_ENABLED", "True").lower() == "true"
     SEMARA_IMPL: str = os.getenv("SEMARA_IMPL", "tech-mahindra")
     SEMARA_ONTOLOGY_URL: str = os.getenv("SEMARA_ONTOLOGY_URL", "")
     SEMARA_OPEN_SOURCE_FALLBACK: bool = os.getenv("SEMARA_OPEN_SOURCE_FALLBACK", "True").lower() == "true"

@@ -19,6 +19,12 @@ from reasoning.experimental_blueprint import get_experimental_blueprint_generato
 from reasoning.evidence_attribution import get_evidence_attributor
 from reasoning.risk_feedback import get_risk_feedback_engine
 from reasoning.collaboration_recommender import get_collaboration_recommender
+from reasoning.decision_tree import DecisionTreeClassifier
+from reasoning.scallop import ScallopReasoner
+from reasoning.deforest_vis import DeforestVIS
+from reasoning.wfa_fast_path import get_wfa_engine
+import diskcache as dc
+from reasoning.semara_reasoner import SemaraReasoner
 
 logger = logging.getLogger("crossmind.neuro_symbolic")
 
@@ -57,6 +63,13 @@ class NeuroSymbolicPipeline:
         self.attributor = get_evidence_attributor()
         self.risk_feedback = get_risk_feedback_engine()
         self.collab_recommender = get_collaboration_recommender()
+        self.semara_reasoner = SemaraReasoner()
+        self.wfa_fast_path = get_wfa_fast_path()
+        self.decision_tree = DecisionTreeClassifier()
+        self.scallop = ScallopReasoner() if settings.SCALLOP_ENABLED else None
+        self.deforest_vis = DeforestVIS(port=settings.DEFORESTVIS_PORT) if settings.DEFORESTVIS_ENABLED else None
+        # DiskCache for persistent query caching
+        self.disk_cache = dc.Cache(settings.DISK_CACHE_PATH) if settings.DISK_CACHE_ENABLED else None
 
     def _enrich_result(
         self,

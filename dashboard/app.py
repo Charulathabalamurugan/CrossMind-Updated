@@ -228,7 +228,7 @@ if run_clicked and query_input:
                 col_s1, col_s2, col_s3 = st.columns(3)
                 with col_s1:
                     st.markdown("Scallop: logical reasoning integration")
-                    st.markdown("Semara: semantic grounding (Tech Mahindra SEMARA; open-source SeMRA fallback via SEMARA_IMPL env var)")
+                    st.markdown("Semara: semantic grounding (Tech Mahindra SEMARA / open-source SeMRA via rdflib - ACTIVE)")
                 with col_s2:
                     st.markdown("DeforestVIS: reasoning visualization")
                     st.markdown("WFA: weighted fast-action reasoning")
