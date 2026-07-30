@@ -82,7 +82,7 @@ with col_t1:
         st.markdown(f'<span class="tech-tag">{t}</span>', unsafe_allow_html=True)
 with col_t2:
     st.markdown("**Phase 2: Retrieval**")
-    for t in ["BGE-M3", "Qdrant", "BM25", "RRF", "ColBERT", "RBAC", "Redis"]:
+    for t in ["BGE-M3", "Qdrant", "BM25", "RRF", "ColBERT", "RBAC", "Redis", "LightGBM/TinyBERT Classifier", "Conditional Retrieval"]:
         st.markdown(f'<span class="tech-tag">{t}</span>', unsafe_allow_html=True)
 with col_t3:
     st.markdown("**Phase 3: Reasoning**")
@@ -90,7 +90,7 @@ with col_t3:
         st.markdown(f'<span class="tech-tag">{t}</span>', unsafe_allow_html=True)
 with col_t4:
     st.markdown("**Phase 4: Application**")
-    for t in ["FastAPI", "React/Streamlit", "SSE", "OpenTelemetry", "Prometheus", "Redis", "DiskCache", "DLDB", "RBAC"]:
+    for t in ["FastAPI", "React/Streamlit", "SSE", "OpenTelemetry", "Prometheus", "Redis", "DiskCache", "DLDB", "RBAC", "Evaluation Framework (PR/NDCG)"]:
         st.markdown(f'<span class="tech-tag">{t}</span>', unsafe_allow_html=True)
 
 # ========== 4-Phase Flow ==========
@@ -192,13 +192,27 @@ if run_clicked and query_input:
                     st.caption(f"Score: {ev.get('score', 0):.4f} | Source: {', '.join(ev.get('retrieval_source', ['dense']))}")
                 
                 pre_filter = result.get("pre_filter", {})
+                
+                # Query Classification & Routing pathway
+                classification = pre_filter.get("query_classification", {})
+                if classification:
+                    st.markdown("**🧠 Query Classifier (LightGBM/TinyBERT) Routing Pathway:**")
+                    col_c1, col_c2, col_c3, col_c4 = st.columns(4)
+                    col_c1.metric("Predicted Domain", classification.get("predicted_domain", "N/A").upper())
+                    col_c2.metric("Query Type", classification.get("query_type", "N/A").upper())
+                    col_c3.metric("Complexity", classification.get("complexity", "N/A").upper())
+                    col_c4.metric("Confidence", f"{classification.get('confidence', 0.0) * 100:.1f}%")
+                    st.caption(f"Model Engine: `{classification.get('model_used', 'LightGBM')}`")
+                
                 col_r1, col_r2, col_r3 = st.columns(3)
                 col_r1.metric("Language", pre_filter.get("language", "unknown"))
                 col_r2.metric("Domains", ", ".join(pre_filter.get("detected_domains", [])))
                 col_r3.metric("Entities", ", ".join(pre_filter.get("extracted_entities", [])))
                 
                 retrieval_strategy = pre_filter.get("retrieval_strategy", "standard_vector")
-                st.caption(f"Strategy: {retrieval_strategy}")
+                st.caption(f"Routing Strategy: **{retrieval_strategy.upper()}**")
+                if "optimized" in retrieval_strategy.lower():
+                    st.success("⚡ Conditional Retrieval Optimization triggered: bypassed expensive GraphRAG/multi-agent processing for simple factual query!")
                 
                 col_bm25, col_rrf, col_colbert = st.columns(3)
                 col_bm25.metric("BM25", "Enabled", "✓")
@@ -308,6 +322,26 @@ if run_clicked and query_input:
                     "evidence_count": len(result.get("retrieved_evidence", [])),
                     "graph_visualization": "Available in Phase 3 reasoning view",
                 })
+
+                st.markdown("---")
+                st.markdown("### 📊 Retrieval Performance Evaluation Dashboard")
+                st.markdown("Assess the quality of semantic and hybrid retrieval against standard ground-truth query-document mappings.")
+                if st.button("Run System Evaluation Benchmark", key="run_eval_btn"):
+                    with st.spinner("Calculating Precision@K, Recall@K, MRR, NDCG..."):
+                        eval_data, eval_err = call_api("/api/evaluate", method="POST")
+                        if eval_err:
+                            st.error(eval_err)
+                        else:
+                            st.success("Evaluation complete!")
+                            avg = eval_data.get("average_metrics", {})
+                            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                            col_m1.metric("Precision @ 5", f"{avg.get('precision_at_5', 0.0) * 100:.1f}%")
+                            col_m2.metric("Recall @ 5", f"{avg.get('recall_at_5', 0.0) * 100:.1f}%")
+                            col_m3.metric("MRR", f"{avg.get('mrr', 0.0):.4f}")
+                            col_m4.metric("NDCG @ 5", f"{avg.get('ndcg_at_5', 0.0):.4f}")
+                            
+                            with st.expander("Benchmark Runs Details", expanded=True):
+                                st.json(eval_data.get("benchmark_runs", []))
 
         # Progress bar between phases
         if i < len(PHASES):

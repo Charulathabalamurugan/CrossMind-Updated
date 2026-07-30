@@ -1,5 +1,7 @@
 # Phase 1: Retrieval Package
 from reasoning.wfa_fast_path import get_wfa_engine
+from reasoning.query_classifier import get_query_classifier
+
 
 # Phase 3: Neuro-Symbolic Reasoning Package
 from reasoning.neuro_symbolic_pipeline import get_neuro_symbolic_pipeline

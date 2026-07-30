@@ -8,6 +8,9 @@ from ingestion.embedding import get_embedder
 logger = logging.getLogger("crossmind.hybrid_rag_kg")
 
 class HybridRAGKG:
+    """
+    HybridRAGKG provides GraphRAG (graphrag) support traversing knowledge graphs 3 levels deep.
+    """
     def __init__(self):
         self.knowledge_graph = KnowledgeGraph()
         self.vector_engine = get_qdrant_engine()

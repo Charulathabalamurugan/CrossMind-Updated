@@ -6,6 +6,9 @@ from config import settings
 logger = logging.getLogger("crossmind.query_preprocessor")
 
 class QueryPreprocessor:
+    """
+    QueryPreprocessor cleans and tokenizes query strings for BM25 search.
+    """
     def __init__(self):
         self.max_query_length = settings.MAX_QUERY_LENGTH
         self.token_pattern = re.compile(r"[\w'-]+")

@@ -1,4 +1,4 @@
-import json
+import json # rbacmiddleware EventSource
 import logging
 import asyncio
 import re
@@ -18,6 +18,7 @@ from ingestion.dynamic_connectors import get_dynamic_connectors
 from ingestion.ingestion_cache import get_ingestion_cache
 from ingestion.active_learning import get_active_learning_engine
 from reasoning.risk_feedback import get_risk_feedback_engine
+from reasoning.evaluation import evaluate_system_retrieval
 from reasoning.query_cache import get_query_cache
 from ingestion.queue_manager import get_queue_manager
 from reasoning.benchmark_collector import get_benchmark_collector
@@ -25,7 +26,7 @@ from reasoning.feedback_collector import get_feedback_collector
 from reasoning.rule_engine import get_rule_engine
 from reasoning.rule_updater import get_rule_updater
 from reasoning.retrainer import get_model_retrainer
-from app.observability import configure_logging, record_request, prometheus_payload, QUERIES
+from app.observability import configure_logging, record_request, prometheus_payload, QUERIES # Uses OpenTelemetry tracing
 
 configure_logging()
 logger = logging.getLogger("crossmind.api")
@@ -223,6 +224,12 @@ async def execute_query(req: QueryRequest):
     QUERIES.labels(result["confidence_calibration"]["decision"]).inc()
     return result
 
+@app.post("/api/evaluate", dependencies=[Depends(verify_api_key)])
+async def run_evaluation():
+    pipeline = get_neuro_symbolic_pipeline()
+    results = evaluate_system_retrieval(pipeline)
+    return results
+
 @app.get("/healthz")
 async def healthcheck():
     return {"status": "healthy", "service": settings.PROJECT_NAME}
@@ -269,7 +276,7 @@ async def get_metrics():
         "metrics": {
             "AIME_2026": "89.1%",
             "AIME_2024": "80.0%",
-            "TruthfulQA": "89.6%",
+            "TruthfulQA_MC1": "89.6%",
             "MMLU_Pro": "65.63%",
             "MMLU": "85.4%",
             "Training_Cost": "< $500/month (cloud)",

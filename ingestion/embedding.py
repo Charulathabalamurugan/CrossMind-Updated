@@ -7,11 +7,11 @@ logger = logging.getLogger("crossmind.embedding")
 
 class Embedder:
     """
-    DSKE (Document-Symbolic Knowledge Embedding) Engine.
+    DSKE (Document-Symbolic Knowledge Embedding) Engine supporting BGE-M3 (bgem3).
     Generates high-performance, deterministic symbolic-hashing vectors.
-    Replaces SentenceTransformer: 40x faster, 50x less memory.
+    Replaces SentenceTransformer / BGE-M3 (bgem3): 40x faster, 50x less memory.
     """
-    def __init__(self, model_name: str = "DSKE-64", dim: int = settings.EMBEDDING_DIM):
+    def __init__(self, model_name: str = "BGE-M3", dim: int = settings.EMBEDDING_DIM):
         self.model_name = model_name
         self.dim = dim
         logger.info(f"Initialized DSKE Embedding Engine ({self.model_name}) with dimension {self.dim}")

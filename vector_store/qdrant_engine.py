@@ -104,7 +104,7 @@ class QdrantVectorEngine:
     """
     Phase 2: Secure Vector Retrieval Engine powered by Qdrant.
     Supports HNSW indexing, 256-dim Matryoshka vectors, scalar quantization,
-    and inline RBAC payload filtering.
+    and inline RBAC payload filtering. Uses ColBERT for deep checking/reranking.
     """
     def __init__(self):
         self.collection_name = settings.QDRANT_COLLECTION_NAME

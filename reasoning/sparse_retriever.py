@@ -8,8 +8,11 @@ from ingestion.sparse_vector import get_sparse_vector_engine
 logger = logging.getLogger("crossmind.sparse_retriever")
 
 class SparseRetriever:
+    """
+    SparseRetriever orchestrates the BM25 retrieval process for exact keyword search.
+    """
     def __init__(self):
-        self.sparse_engine = get_sparse_vector_engine()
+        self.sparse_engine = get_sparse_vector_engine() # BM25 engine
         self.rrf_enabled = getattr(settings, "RRF_ENABLED", True)
         self.rrf_k = getattr(settings, "RRF_K", 60)
         self.cache_ttl = getattr(settings, "REDIS_RETRIEVAL_CACHE_TTL", 1800)

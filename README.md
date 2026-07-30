@@ -18,10 +18,12 @@
 
 ## Phase 2: Retrieval
 
-**Technologies:** BGE-M3, Qdrant, BM25, RRF, ColBERT (Server-Side via Qdrant API), RBAC, Redis
+**Technologies:** BGE-M3, Qdrant, BM25, RRF, ColBERT (Server-Side via Qdrant API), RBAC, Redis, LightGBM/TinyBERT Classifier, Conditional Retrieval
 
-**Purpose:** Performs hybrid semantic and keyword-based retrieval, reranks the retrieved results using ColBERT, applies role-based access control, and uses caching to provide fast and relevant evidence.
+**Purpose:** Performs hybrid semantic and keyword-based retrieval, reranks the retrieved results using ColBERT, applies role-based access control, uses caching to provide fast and relevant evidence, and employs a machine learning query classifier to conditionally optimize retrieval pathways.
 
+- LightGBM / TinyBERT Query Classifier (via TfidfVectorizer + GradientBoosting/MLP) categorizing query domains, types, and complexities
+- Conditional Retrieval Optimization bypassing heavy multi-agent / GraphRAG steps for low-complexity / factual queries to minimize latency
 - BGE-M3 dense vector search via Qdrant HNSW index (O(log N))
 - BM25 sparse keyword ranking
 - Reciprocal Rank Fusion (RRF) for hybrid result merging
@@ -48,10 +50,11 @@
 
 ## Phase 4: Application
 
-**Technologies:** FastAPI, React/Streamlit, SSE, OpenTelemetry, Prometheus, Redis + DiskCache, DLDB, RBAC
+**Technologies:** FastAPI, React/Streamlit, SSE, OpenTelemetry, Prometheus, Redis + DiskCache, DLDB, RBAC, Evaluation Framework
 
-**Purpose:** Provides the user interface and real-time streaming, monitors system performance, manages hot and warm caching, stores feedback and long-term knowledge, and ensures secure role-based access.
+**Purpose:** Provides the user interface and real-time streaming, monitors system performance, manages hot and warm caching, stores feedback and long-term knowledge, ensures secure role-based access, and evaluates search retrieval quality.
 
+- Retrieval Performance Evaluation Framework calculating Precision@K, Recall@K, MRR, and NDCG@K against standard ground-truth datasets
 - FastAPI SSE for real-time token/citation streaming
 - Streamlit prototype UI + React for enterprise production
 - OpenTelemetry + Jaeger for distributed tracing

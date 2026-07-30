@@ -2,6 +2,7 @@ import time
 import logging
 from typing import Any, Dict, Generator, List, Optional
 from config import settings
+import diskcache as dc
 
 from reasoning.symbolic_filter import SymbolicPreFilter, SymbolicPostValidator
 from reasoning.rxg_nano_agent import ZAYA1_8BAgent
@@ -23,24 +24,28 @@ from reasoning.decision_tree import DecisionTreeClassifier
 from reasoning.scallop import ScallopReasoner
 from reasoning.deforest_vis import DeforestVIS
 from reasoning.wfa_fast_path import get_wfa_engine
-import diskcache as dc
 from reasoning.semara_reasoner import SemaraReasoner
+from reasoning.query_classifier import get_query_classifier
 
 logger = logging.getLogger("crossmind.neuro_symbolic")
 
 
 class NeuroSymbolicPipeline:
     """
-    Complete Phase 3 Orchestrator with 9 advanced capabilities:
+    Complete Phase 3 Orchestrator with 9 advanced capabilities including GraphRAG (graphrag):
     1. Multi-Agent Orchestration
     2. Dual-Memory Architecture
     3. Formal Z3 Validation
     4. Experimental Blueprint
-    5. Hybrid RAG-KG
+    5. Hybrid RAG-KG (graphrag)
     6. Evidence Attribution
     7. Risk-Controlled Feedback
     8. Collaboration Recommendations
     9. Graph Browser support
+    
+    Implements:
+    - Simple Path (<10ms): WFA + Decision Tree + Scallop
+    - Complex Path (Deep Reasoning): Semara + GraphRAG + ZAYA1-8B
     """
 
     def __init__(self):
@@ -64,8 +69,9 @@ class NeuroSymbolicPipeline:
         self.risk_feedback = get_risk_feedback_engine()
         self.collab_recommender = get_collaboration_recommender()
         self.semara_reasoner = SemaraReasoner()
-        self.wfa_fast_path = get_wfa_fast_path()
+        self.wfa_fast_path = get_wfa_engine()
         self.decision_tree = DecisionTreeClassifier()
+        self.query_classifier = get_query_classifier()
         self.scallop = ScallopReasoner() if settings.SCALLOP_ENABLED else None
         self.deforest_vis = DeforestVIS(port=settings.DEFORESTVIS_PORT) if settings.DEFORESTVIS_ENABLED else None
         # DiskCache for persistent query caching
@@ -209,8 +215,13 @@ class NeuroSymbolicPipeline:
         memory_context_str = self.memory_service.get_relevant_context(query)
         filter_metadata["memory_context"] = memory_context_str
 
-        # Step 2: Retrieval (Hybrid RAG-KG or standard)
-        if settings.MULTI_AGENT_ENABLED:
+        # Query Classifier & Routing Pathway Decision
+        classification = self.query_classifier.classify(query)
+        filter_metadata["query_classification"] = classification
+        is_simple_query = classification["complexity"] == "low" or classification["query_type"] == "factual"
+
+        # Step 2: Retrieval (Hybrid RAG-KG or standard) with Conditional Retrieval Optimization
+        if settings.MULTI_AGENT_ENABLED and not is_simple_query:
             hybrid_result = self.hybrid_rag.retrieve(
                 query=query,
                 user_role=user_role,
@@ -228,11 +239,11 @@ class NeuroSymbolicPipeline:
                 top_k=5,
                 query_text=query,
             )
-            filter_metadata["retrieval_strategy"] = "standard_vector"
+            filter_metadata["retrieval_strategy"] = "optimized_simple_vector" if is_simple_query else "standard_vector"
 
         # Multi-agent orchestration (parallel domain processing)
         multi_agent_report = None
-        if settings.MULTI_AGENT_ENABLED and retrieved_evidence:
+        if settings.MULTI_AGENT_ENABLED and retrieved_evidence and not is_simple_query:
             multi_agent_report = self.multi_agent.parallel_process(
                 query, retrieved_evidence, filter_metadata
             )
@@ -401,6 +412,12 @@ class NeuroSymbolicPipeline:
         memory_context_str = self.memory_service.get_relevant_context(query)
         filter_metadata["memory_context"] = memory_context_str
 
+        # Query Classifier & Routing Pathway Decision
+        classification = self.query_classifier.classify(query)
+        filter_metadata["query_classification"] = classification
+        is_simple_query = classification["complexity"] == "low" or classification["query_type"] == "factual"
+        filter_metadata["retrieval_strategy"] = "optimized_simple_vector" if is_simple_query else "standard_vector"
+
         evt1 = {"event": "step_3a_pre_filter", "data": filter_metadata}
         events_recorded.append(evt1)
         yield evt1
@@ -418,6 +435,7 @@ class NeuroSymbolicPipeline:
             "data": {
                 "retrieved_count": len(retrieved_evidence),
                 "retrieved_evidence": retrieved_evidence,
+                "strategy": filter_metadata["retrieval_strategy"],
             },
         }
         events_recorded.append(evt2)
