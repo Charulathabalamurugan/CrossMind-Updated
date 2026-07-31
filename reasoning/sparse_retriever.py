@@ -77,12 +77,31 @@ class SparseRetriever:
         top_k: int = 5,
     ) -> List[Dict[str, Any]]:
         score_map = {}
+        quality_map = {}
+        
+        # Build quality score map from dense and sparse results payload
+        for doc in dense_results:
+            doc_id = str(doc.get("id", ""))
+            quality_map[doc_id] = doc.get("payload", {}).get("quality_score", 0.5)
+            
+        for doc in sparse_results:
+            doc_id = str(doc.get("doc_id", doc.get("id", "")))
+            if doc_id not in quality_map:
+                quality_map[doc_id] = doc.get("payload", {}).get("quality_score", 0.5)
+
         for rank, doc in enumerate(dense_results, 1):
             doc_id = str(doc.get("id", ""))
             score_map[doc_id] = score_map.get(doc_id, 0.0) + 1.0 / (self.rrf_k + rank)
+            
         for rank, doc in enumerate(sparse_results, 1):
-            doc_id = str(doc.get("doc_id", ""))
+            doc_id = str(doc.get("doc_id", doc.get("id", "")))
             score_map[doc_id] = score_map.get(doc_id, 0.0) + 1.0 / (self.rrf_k + rank)
+            
+        # Apply Quality Weighting to RRF scores
+        for doc_id in score_map:
+            q_score = quality_map.get(doc_id, 0.5)
+            score_map[doc_id] = score_map[doc_id] * (1.0 + q_score)
+            
         ranked = sorted(score_map.items(), key=lambda x: x[1], reverse=True)
         return [{"doc_id": doc_id, "rrf_score": score, "rank": idx + 1} for idx, (doc_id, score) in enumerate(ranked[:top_k])]
 
@@ -98,16 +117,64 @@ class SparseRetriever:
         if self.rrf_enabled and len(dense_results) > 0 and len(sparse_results) > 0:
             rrf_results = self._reciprocal_rank_fusion(dense_results, sparse_results, top_k=top_k)
             id_to_dense = {str(d.get("id", "")): d for d in dense_results}
+            id_to_sparse = {str(s.get("doc_id", s.get("id", ""))): s for s in sparse_results}
             ranked = []
             for rrf_item in rrf_results:
                 doc_id = rrf_item["doc_id"]
+                q_score = 0.5
                 if doc_id in id_to_dense:
                     doc = id_to_dense[doc_id]
-                    result = {**doc, "score": rrf_item["rrf_score"], "fusion_sources": ["dense", "sparse_rrf"]}
+                    q_score = doc.get("payload", {}).get("quality_score", 0.5)
+                    result = {**doc, "score": rrf_item["rrf_score"], "fusion_sources": ["dense", "sparse_rrf"], "quality_score": q_score}
+                elif doc_id in id_to_sparse:
+                    doc = id_to_sparse[doc_id]
+                    q_score = doc.get("payload", {}).get("quality_score", 0.5)
+                    result = {
+                        "id": doc_id,
+                        "score": rrf_item["rrf_score"],
+                        "payload": doc.get("payload", {}),
+                        "source": "sparse_only",
+                        "fusion_sources": ["sparse_rrf"],
+                        "quality_score": q_score
+                    }
                 else:
-                    result = {"id": doc_id, "score": rrf_item["rrf_score"], "source": "sparse_only", "fusion_sources": ["sparse_rrf"]}
+                    result = {"id": doc_id, "score": rrf_item["rrf_score"], "source": "sparse_only", "fusion_sources": ["sparse_rrf"], "quality_score": q_score}
                 ranked.append(result)
+            # Re-sort ranked list to ensure proper ordering after fusion scoring
+            ranked.sort(key=lambda x: x["score"], reverse=True)
             return ranked
+        
+        # Fallback to linear combination weight and also apply quality score weighting
+        sparse_score_map = {r.get("doc_id", r.get("id", "")): r.get("score", 0.0) * sparse_weight for r in sparse_results}
+        merged = {}
+        for doc in dense_results:
+            doc_id = str(doc.get("id", ""))
+            q_score = doc.get("payload", {}).get("quality_score", 0.5)
+            merged[doc_id] = {
+                **doc,
+                "score": doc.get("score", 0.0) * dense_weight * (1.0 + q_score),
+                "fusion_sources": ["dense"],
+                "quality_score": q_score,
+            }
+        for sparse in sparse_results:
+            doc_id = sparse.get("doc_id", sparse.get("id", ""))
+            score = sparse.get("score", 0.0) * sparse_weight
+            q_score = sparse.get("payload", {}).get("quality_score", 0.5)
+            boosted_score = score * (1.0 + q_score)
+            if doc_id in merged:
+                merged[doc_id]["score"] += boosted_score
+                merged[doc_id]["fusion_sources"].append("sparse")
+            else:
+                merged[doc_id] = {
+                    "id": doc_id,
+                    "score": boosted_score,
+                    "payload": sparse.get("payload", {}),
+                    "source": "sparse_only",
+                    "fusion_sources": ["sparse"],
+                    "quality_score": q_score,
+                }
+        ranked = sorted(merged.values(), key=lambda x: x["score"], reverse=True)
+        return ranked[:top_k]
         sparse_score_map = {r["doc_id"]: r["score"] * sparse_weight for r in sparse_results}
         merged = {}
         for doc in dense_results:

@@ -156,10 +156,35 @@ class IngestionPipeline:
             records_to_upsert = []
             for chunk in chunks:
                 doc_id = chunk["id"]
+                content_text = chunk.get("text", "")
+                
+                # Quality scoring logic
+                q_score = 0.1
+                if content_text:
+                    words = len(content_text.split())
+                    if words > 500:
+                        q_score += 0.4
+                    elif words > 200:
+                        q_score += 0.2
+                    elif words > 50:
+                        q_score += 0.1
+                    
+                    structure_words = ["abstract", "conclusions", "references", "methods", "results", "discussion", "introduction", "figure", "table"]
+                    content_lower = content_text.lower()
+                    matches = sum(1 for w in structure_words if w in content_lower)
+                    q_score += min(matches * 0.05, 0.3)
+                    
+                    import re
+                    if re.search(r'\b\d+(\.\d+)?%\b', content_lower) or re.search(r'\bp\s*<\s*0\.\d+\b', content_lower):
+                        q_score += 0.1
+                    if doc.get("authors") and doc.get("year") and doc.get("title"):
+                        q_score += 0.1
+                q_score = round(min(q_score, 1.0), 3)
+
                 payload = {
                     "id": doc_id,
                     "title": chunk.get("title", doc.get("title", "Untitled Document")),
-                    "content": chunk.get("text", ""),
+                    "content": content_text,
                     "domain": chunk.get("domain", doc.get("domain", "general")),
                     "year": chunk.get("year", doc.get("year", 2024)),
                     "authors": chunk.get("authors", doc.get("authors", [])),
@@ -168,6 +193,7 @@ class IngestionPipeline:
                     "citation": f"{doc.get('authors', ['CrossMind Research'])[0]} et al. ({doc.get('year', 2024)}) - {doc.get('title', 'Untitled')}",
                     "chunk_index": chunk.get("chunk_index", 0),
                     "content_hash": chunk.get("content_hash", ""),
+                    "quality_score": q_score,
                 }
                 records_to_upsert.append({
                     "id": doc_id,

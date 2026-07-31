@@ -147,15 +147,27 @@ class ZAYA1_8BAgent:
                 delta_payload["structured_result"] = result
             yield delta_payload
 
+from reasoning.conflict_detector import ConflictDetector
+
     def _build_prompt(self, query: str, evidence: List[Dict[str, Any]], filter_meta: Dict[str, Any], graph_context: Dict[str, Any] = None) -> str:
         evidence_str = "\n".join([
             f"[{ev['id']}] Title: {ev['payload'].get('title')} | Domain: {ev['payload'].get('domain')} | Text: {ev['payload'].get('content')}"
             for ev in evidence
         ])
+        
+        # Conflict detection step
+        conflicts = ConflictDetector.detect_conflicts(evidence)
+        conflict_str = ""
+        if conflicts:
+            conflict_str = "\n\nCRITICAL CONFLICTS DETECTED IN RETRIEVED EVIDENCE:\n"
+            for c in conflicts:
+                conflict_str += f"- Contradictory claims between [{c['source_id_1']}] and [{c['source_id_2']}]: {c['conflict_type']}\n  Details: {c['details']}\n"
+            conflict_str += "Please analyze and resolve these conflicts in your abductive reasoning steps.\n"
+
         paths = (graph_context or {}).get("multi_hop_paths", [])[:5]
         graph_str = "\n".join(" -> ".join(path["path"]) for path in paths) or "No supported multi-hop path found."
         memory_str = f"\nPast Memory Context:\n{filter_meta.get('memory_context')}\n" if filter_meta.get("memory_context") else ""
-        return f"User Query: {query}\nDetected Language: {filter_meta.get('language')}{memory_str}\nRetrieved Literature Evidence:\n{evidence_str}\n\nGraphRAG multi-hop paths (use only as supported context):\n{graph_str}\n\nGenerate your [THINK] reasoning steps followed by the structured cross-domain hypothesis."
+        return f"User Query: {query}\nDetected Language: {filter_meta.get('language')}{memory_str}\nRetrieved Literature Evidence:\n{evidence_str}{conflict_str}\n\nGraphRAG multi-hop paths (use only as supported context):\n{graph_str}\n\nGenerate your [THINK] reasoning steps followed by the structured cross-domain hypothesis."
 
     def _parse_agent_output(self, raw_text: str, retrieved_evidence: List[Dict[str, Any]]) -> Dict[str, Any]:
         think_match = re.search(r"\[THINK\](.*?)\[/THINK\]", raw_text, re.DOTALL)
@@ -241,6 +253,14 @@ class ZAYA1_8BAgent:
                 "5. Synthesizing cross-domain connections based on retrieved evidence and scientific principles.\n"
                 "6. Validating cross-domain synergy and formulating a testable hypothesis grounded in the evidence."
             )
+            
+            # Check for contradictory conflicts
+            conflicts = ConflictDetector.detect_conflicts(retrieved_evidence)
+            conflict_details = ""
+            if conflicts:
+                conflict_details = "\n".join([f"- Contradiction between [{c['source_id_1']}] and [{c['source_id_2']}]: {c['conflict_type']}." for c in conflicts])
+                think_block += f"\n7. Warning: Detected conflicting evidence:\n{conflict_details}\n8. Reconciling opposing claims through abductive reasoning..."
+
             tool_calls = [
                 f"Semantic search in Qdrant for: '{query}'",
                 f"Cross-domain evidence retrieval for: {domains_str}"
@@ -258,6 +278,9 @@ class ZAYA1_8BAgent:
                 "- Ingest additional literature covering the cross-domain intersection\n"
                 "- Run deeper graph traversal to identify multi-hop connections"
             )
+            
+            if conflicts:
+                output_text += f"\n\n**5. Conflict Resolution & Reconciliation:**\nCrossMind detected conflicting claims in the retrieved literature:\n{conflict_details}\nBased on abductive reasoning, we hypothesize that these differences arise from experimental conditions or assay parameters, and we recommend validating both paths to resolve the contradiction."
 
         return {
             "model": "ZAYA1-8B (8.4B MoE, 760M active)",

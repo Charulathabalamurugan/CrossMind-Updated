@@ -358,7 +358,14 @@ class QdrantVectorEngine:
                     if doc["id"] == doc_id:
                         bm25_rank = idx
                         break
-                rrf_scores[doc_id] = (1.0 / (60.0 + dense_rank)) + (1.0 / (60.0 + bm25_rank))
+                
+                # Fetch quality score
+                doc_payload = all_docs[doc_id].get("payload", {})
+                q_score = doc_payload.get("quality_score", 0.5) if isinstance(doc_payload, dict) else 0.5
+                
+                # Fused score weighted by quality score
+                base_rrf = (1.0 / (60.0 + dense_rank)) + (1.0 / (60.0 + bm25_rank))
+                rrf_scores[doc_id] = base_rrf * (1.0 + q_score)
             
             merged = []
             for doc_id, rrf_score in sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True):

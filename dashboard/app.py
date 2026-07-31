@@ -264,6 +264,30 @@ if run_clicked and query_input:
                 
                 st.markdown("**Generated Hypothesis:**")
                 st.info(agent.get("hypothesis", agent.get("output_text", "No hypothesis"))[:500])
+                
+                st.markdown("**Was this hypothesis helpful?**")
+                col_fb1, col_fb2 = st.columns([1, 10])
+                feedback_key = f"feedback_{hash(safe_query)}"
+                if feedback_key not in st.session_state:
+                    st.session_state[feedback_key] = None
+                    
+                if st.session_state[feedback_key] is None:
+                    with col_fb1:
+                        if st.button("👍 Yes", key="thumbs_up"):
+                            st.session_state[feedback_key] = "UP"
+                            with open("user_feedback.log", "a", encoding="utf-8") as f:
+                                import datetime
+                                f.write(f"[{datetime.datetime.now().isoformat()}] Query: {safe_query} | Feedback: UP | Hypothesis: {agent.get('hypothesis', '')[:200]}...\n")
+                            st.rerun()
+                    with col_fb2:
+                        if st.button("👎 No", key="thumbs_down"):
+                            st.session_state[feedback_key] = "DOWN"
+                            with open("user_feedback.log", "a", encoding="utf-8") as f:
+                                import datetime
+                                f.write(f"[{datetime.datetime.now().isoformat()}] Query: {safe_query} | Feedback: DOWN | Hypothesis: {agent.get('hypothesis', '')[:200]}...\n")
+                            st.rerun()
+                else:
+                    st.success(f"Feedback submitted: {st.session_state[feedback_key]}! Thank you.")
 
         elif i == 4:
             # Phase 4: Application
