@@ -75,6 +75,7 @@ class Settings(BaseSettings):
     BGE_M3_ENABLED: bool = os.getenv("BGE_M3_ENABLED", "True").lower() == "true"
     BGE_M3_MODEL_NAME: str = os.getenv("BGE_M3_MODEL_NAME", "BAAI/bge-m3")
     BGE_M3_DIM: int = int(os.getenv("BGE_M3_DIM", "1024"))
+    BGE_M3_RETRIEVAL_DIM: int = int(os.getenv("BGE_M3_RETRIEVAL_DIM", "256"))
     BGE_M3_MATRYOSHKA_ENABLED: bool = os.getenv("BGE_M3_MATRYOSHKA_ENABLED", "True").lower() == "true"
     BGE_M3_PRECISION: str = os.getenv("BGE_M3_PRECISION", "fp32")
     BGE_M3_MAX_LENGTH: int = int(os.getenv("BGE_M3_MAX_LENGTH", "8192"))
@@ -107,6 +108,11 @@ class Settings(BaseSettings):
     COLBERT_MULTIVECTOR_ENABLED: bool = os.getenv("COLBERT_MULTIVECTOR_ENABLED", "True").lower() == "true"
     COLBERT_MULTIVECTOR_MAX_SIM: str = os.getenv("COLBERT_MULTIVECTOR_MAX_SIM", "MAX_SIM")
     COLBERT_MULTIVECTOR_M: int = int(os.getenv("COLBERT_MULTIVECTOR_M", "0"))
+    CROSS_ENCODER_RERANKING_ENABLED: bool = os.getenv("CROSS_ENCODER_RERANKING_ENABLED", "True").lower() == "true"
+    CROSS_ENCODER_TOP_K: int = int(os.getenv("CROSS_ENCODER_TOP_K", "20"))
+    CROSS_ENCODER_MAX_CANDIDATES: int = int(os.getenv("CROSS_ENCODER_MAX_CANDIDATES", "40"))
+    SEMANTIC_QUERY_CACHE_THRESHOLD: float = float(os.getenv("SEMANTIC_QUERY_CACHE_THRESHOLD", "0.92"))
+    SEMANTIC_QUERY_CACHE_DIM: int = int(os.getenv("SEMANTIC_QUERY_CACHE_DIM", "256"))
     # RBAC at retrieval layer
     RBAC_ENABLED: bool = os.getenv("RBAC_ENABLED", "True").lower() == "true"
     RBAC_ROLES: str = os.getenv("RBAC_ROLES", "admin,analyst,viewer")
@@ -123,6 +129,9 @@ class Settings(BaseSettings):
     WFA_FAST_PATH_ENABLED: bool = os.getenv("WFA_FAST_PATH_ENABLED", "True").lower() == "true"
     FAST_PATH_CONFIDENCE_THRESHOLD: float = float(os.getenv("FAST_PATH_CONFIDENCE_THRESHOLD", "0.85"))
     DECISION_TREE_ENABLED: bool = os.getenv("DECISION_TREE_ENABLED", "True").lower() == "true"
+    # LiteLLM routing for moderate complexity reasoning
+    LITELLM_ENABLED: bool = os.getenv("LITELLM_ENABLED", "True").lower() == "true"
+    LITELLM_MODEL_NAME: str = os.getenv("LITELLM_MODEL_NAME", "lite-llm/mini")
     # GraphRAG slow path
     GRAPH_RAG_ENABLED: bool = os.getenv("GRAPH_RAG_ENABLED", "True").lower() == "true"
     GRAPH_RAG_DEPTH: int = int(os.getenv("GRAPH_RAG_DEPTH", "3"))

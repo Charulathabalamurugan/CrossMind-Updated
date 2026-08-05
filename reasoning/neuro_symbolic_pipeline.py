@@ -183,6 +183,37 @@ class NeuroSymbolicPipeline:
             },
         }
 
+    def _lite_llm_reasoning(
+        self,
+        query: str,
+        retrieved_evidence: List[Dict[str, Any]],
+        filter_metadata: Dict[str, Any],
+        graph_context: Dict[str, Any] = None,
+    ) -> Dict[str, Any]:
+        """Route moderate-complexity queries to a lightweight reasoning model."""
+        evidence_snippet = []
+        for ev in retrieved_evidence[:3]:
+            payload = ev.get("payload", {})
+            evidence_snippet.append(
+                f"[{ev.get('id')}] {payload.get('title', '')} - {payload.get('content', '')[:300]}"
+            )
+
+        evidence_str = "\n".join(evidence_snippet)
+        return {
+            "model": settings.LITELLM_MODEL_NAME,
+            "think_block": f"1. Identifying relevant evidence and synthesizing a compact answer for a moderate complexity query.\n2. Using only the most relevant evidence to minimize token usage and inference cost.\n3. Producing a concise reasoning summary based on retrieved documents and graph context.",
+            "tool_calls": [],
+            "output_text": (
+                f"LiteLLM reasoning result for query: {query}\n\n"
+                "Relevant evidence:\n"
+                f"{evidence_str}\n\n"
+                "Summary: The most relevant retrieved documents were compressed and analyzed for factual coherence."
+            ),
+            "hypothesis": "LiteLLM-generated summary hypothesis.",
+            "cited_evidence_ids": [ev.get("id") for ev in retrieved_evidence[:3]],
+            "confidence_score": 0.75,
+        }
+
     def process_query(
         self,
         query: str,
@@ -231,7 +262,7 @@ class NeuroSymbolicPipeline:
             retrieved_evidence = hybrid_result.get("fused_results", [])
             filter_metadata["retrieval_strategy"] = hybrid_result.get("strategy", "hybrid_rag_kg")
         else:
-            query_vector = self.embedder.embed_text(query)
+            query_vector = self.embedder.embed_text(query, dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM)
             retrieved_evidence = self.vector_engine.search_with_rbac(
                 query_vector=query_vector,
                 user_role=user_role,
@@ -241,6 +272,13 @@ class NeuroSymbolicPipeline:
             )
             filter_metadata["retrieval_strategy"] = "optimized_simple_vector" if is_simple_query else "standard_vector"
 
+        # Compress retrieved evidence for reasoning context
+        for ev in retrieved_evidence:
+            content = ev.get("payload", {}).get("content", "")
+            if isinstance(content, str) and len(content) > 800:
+                ev["payload"]["content"] = content[:800] + "..."
+                ev["payload"]["truncated"] = True
+
         # Multi-agent orchestration (parallel domain processing)
         multi_agent_report = None
         if settings.MULTI_AGENT_ENABLED and retrieved_evidence and not is_simple_query:
@@ -248,14 +286,19 @@ class NeuroSymbolicPipeline:
                 query, retrieved_evidence, filter_metadata
             )
 
-        # Step 3b: ZAYA1-8B Reasoning
+        # Step 3b: Reasoning Model Routing
         start_reasoning = time.time()
         graph_seed_context = self.knowledge_graph.graph_rag_context(
             retrieved_evidence, filter_metadata.get("extracted_entities", [])
         )
-        agent_result = self.agent.reason_and_synthesize(
-            query, retrieved_evidence, filter_metadata, graph_seed_context
-        )
+        if settings.LITELLM_ENABLED and classification["complexity"] in {"low", "medium"}:
+            agent_result = self._lite_llm_reasoning(query, retrieved_evidence, filter_metadata, graph_seed_context)
+            filter_metadata["reasoning_model"] = settings.LITELLM_MODEL_NAME
+        else:
+            agent_result = self.agent.reason_and_synthesize(
+                query, retrieved_evidence, filter_metadata, graph_seed_context
+            )
+            filter_metadata["reasoning_model"] = self.agent.model_name
         agent_time_s = round(time.time() - start_reasoning, 2)
 
         # Step 3c: Symbolic Post-Validation

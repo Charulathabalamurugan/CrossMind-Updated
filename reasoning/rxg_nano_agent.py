@@ -4,6 +4,7 @@ import logging
 import socket
 from typing import List, Dict, Any, Generator
 from config import settings
+from reasoning.conflict_detector import ConflictDetector
 
 try:
     import httpx
@@ -146,8 +147,6 @@ class ZAYA1_8BAgent:
             if is_last:
                 delta_payload["structured_result"] = result
             yield delta_payload
-
-from reasoning.conflict_detector import ConflictDetector
 
     def _build_prompt(self, query: str, evidence: List[Dict[str, Any]], filter_meta: Dict[str, Any], graph_context: Dict[str, Any] = None) -> str:
         evidence_str = "\n".join([

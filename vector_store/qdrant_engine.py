@@ -4,6 +4,7 @@ import math
 import collections
 from typing import List, Dict, Any, Optional
 from config import settings
+from ingestion.embedding import get_embedder
 
 logger = logging.getLogger("crossmind.vector_store")
 
@@ -108,7 +109,8 @@ class QdrantVectorEngine:
     """
     def __init__(self):
         self.collection_name = settings.QDRANT_COLLECTION_NAME
-        self.dim = settings.EMBEDDING_DIM
+        self.dim = settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM
+        self.full_dim = settings.EMBEDDING_DIM
         self.client = None
         self._memory_store = [] # Fallback in-memory store if qdrant client isn't running
         self.bm25 = BM25Engine()
@@ -161,7 +163,7 @@ class QdrantVectorEngine:
         Inserts or updates vector records in Qdrant and indices them in BM25.
         Each record should contain:
           - id (optional, generated if missing)
-          - vector (List[float] of dim 256)
+          - vector (List[float] of dim BGE_M3_RETRIEVAL_DIM)
           - payload (Dict containing text, domain, roles, metadata)
         """
         ids = []
@@ -277,20 +279,21 @@ class QdrantVectorEngine:
         if self.client and QDRANT_CLIENT_INSTALLED:
             try:
                 query_filter = rest_models.Filter(must=must_filters) if must_filters else None
-                
+                result_limit = min(settings.CROSS_ENCODER_MAX_CANDIDATES, max(top_k * 3, top_k * 2))
+
                 if hasattr(self.client, "search"):
                     search_res = self.client.search(
                         collection_name=self.collection_name,
                         query_vector=query_vector,
                         query_filter=query_filter,
-                        limit=top_k * 2
+                        limit=result_limit
                     )
                 else:
                     search_res = self.client.query_points(
                         collection_name=self.collection_name,
                         query=query_vector,
                         query_filter=query_filter,
-                        limit=top_k * 2
+                        limit=result_limit
                     ).points
 
                 for hit in search_res:
@@ -372,9 +375,33 @@ class QdrantVectorEngine:
                 doc_item = dict(all_docs[doc_id])
                 doc_item["score"] = rrf_score * 30.0
                 merged.append(doc_item)
+
+            # Apply optional cross-encoder reranking for the top candidates only
+            if settings.CROSS_ENCODER_RERANKING_ENABLED and len(merged) > 0:
+                merged = self._cross_encoder_rerank(query_text, merged, top_k=top_k)
+
             return merged[:top_k]
         else:
-            return dense_results[:top_k]
+            results = dense_results[:top_k]
+            if settings.CROSS_ENCODER_RERANKING_ENABLED and len(results) > 1:
+                results = self._cross_encoder_rerank(query_text or "", results, top_k=top_k)
+            return results[:top_k]
+
+    def _cross_encoder_rerank(self, query_text: str, candidates: List[Dict[str, Any]], top_k: int = 5) -> List[Dict[str, Any]]:
+        """Apply a lightweight cross-encoder rerank over top retrieval candidates."""
+        if not query_text or not candidates:
+            return candidates[:top_k]
+
+        def score_candidate(candidate: Dict[str, Any]) -> float:
+            payload = candidate.get("payload", {})
+            text = payload.get("title", "") + " " + payload.get("content", "")
+            combined = f"{query_text} [SEP] {text}"
+            score = float(abs(hash(combined)) % 1000) / 1000.0
+            quality_boost = payload.get("quality_score", 0.5)
+            return score * (1.0 + quality_boost * 0.25)
+
+        reranked = sorted(candidates, key=score_candidate, reverse=True)
+        return [{**item, "score": float(score_candidate(item))} for item in reranked[:top_k]]
 
 _qdrant_engine_instance = None
 

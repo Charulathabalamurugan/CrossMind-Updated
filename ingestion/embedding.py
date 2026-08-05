@@ -16,15 +16,16 @@ class Embedder:
         self.dim = dim
         logger.info(f"Initialized DSKE Embedding Engine ({self.model_name}) with dimension {self.dim}")
 
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
+    def embed_texts(self, texts: List[str], dim: int = None) -> List[List[float]]:
         results = []
         for text in texts:
-            vec = self._deterministic_vector(text, self.dim)
+            effective_dim = dim if dim is not None else self.dim
+            vec = self._deterministic_vector(text, effective_dim)
             results.append(vec)
         return results
 
-    def embed_text(self, text: str) -> List[float]:
-        return self.embed_texts([text])[0]
+    def embed_text(self, text: str, dim: int = None) -> List[float]:
+        return self.embed_texts([text], dim=dim)[0]
 
     def _deterministic_vector(self, text: str, dim: int) -> List[float]:
         """Generates a stable, reproducible normalized vector based on text feature hashing (DSKE)."""

@@ -126,7 +126,8 @@ class IngestionPipeline:
             chunk["doc_id"] = doc.get("id") or str(uuid.uuid4())
             chunk["content_hash"] = doc.get("content_hash") or str(hash(content))
         texts = [c["text"] for c in chunks]
-        embeddings = self.embedder.embed_texts(texts)
+        emb_dim = settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM
+        embeddings = self.embedder.embed_texts(texts, dim=emb_dim)
         for chunk, emb in zip(chunks, embeddings):
             chunk["vector"] = emb
         return chunks
@@ -232,7 +233,14 @@ class IngestionPipeline:
             self.benchmark_collector.end_phase("query")
             logger.info(f"Query cache hit for: {query[:50]}...")
             return cached
-        query_vector = self.embedder.embed_text(query)
+
+        semantic_cached = self.query_cache.get_similar(query, user_role=user_role)
+        if semantic_cached is not None:
+            self.benchmark_collector.end_phase("query")
+            logger.info(f"Semantic query cache hit for: {query[:50]}...")
+            return semantic_cached
+
+        query_vector = self.embedder.embed_text(query, dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM)
         dense_results = self.vector_engine.search_with_rbac(
             query_vector=query_vector,
             user_role=user_role,
@@ -248,7 +256,7 @@ class IngestionPipeline:
             "result_count": len(hybrid_results),
             "retrieval_phase": "phase2_hybrid_retrieval",
         }
-        self.query_cache.set(cache_key, result)
+        self.query_cache.set(cache_key, result, query=query, user_role=user_role)
         self.benchmark_collector.end_phase("query")
         self.benchmark_collector.record_retrieval(
             dense_ms=0.0, sparse_ms=0.0, dense_count=len(dense_results), sparse_count=len(hybrid_results)
