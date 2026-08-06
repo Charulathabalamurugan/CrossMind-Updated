@@ -99,16 +99,17 @@ class Settings(BaseSettings):
     # RRF fusion
     RRF_ENABLED: bool = os.getenv("RRF_ENABLED", "True").lower() == "true"
     RRF_K: int = int(os.getenv("RRF_K", "60"))
-    # ColBERT reranking (server-side via Qdrant API)
-    COLBERT_RERANKING_ENABLED: bool = os.getenv("COLBERT_RERANKING_ENABLED", "True").lower() == "true"
+    # ColBERT reranking is replaced by lightweight cross-encoder reranking.
+    COLBERT_RERANKING_ENABLED: bool = os.getenv("COLBERT_RERANKING_ENABLED", "False").lower() == "true"
     COLBERT_MODEL_NAME: str = os.getenv("COLBERT_MODEL_NAME", "colbert-ir/colbertv2.0")
     COLBERT_TOP_K: int = int(os.getenv("COLBERT_TOP_K", "20"))
     COLBERT_THRESHOLD: float = float(os.getenv("COLBERT_THRESHOLD", "0.7"))
     # Qdrant MultiVectorConfig for ColBERT (MAX_SIM similarity, m=0 quantization)
-    COLBERT_MULTIVECTOR_ENABLED: bool = os.getenv("COLBERT_MULTIVECTOR_ENABLED", "True").lower() == "true"
+    COLBERT_MULTIVECTOR_ENABLED: bool = os.getenv("COLBERT_MULTIVECTOR_ENABLED", "False").lower() == "true"
     COLBERT_MULTIVECTOR_MAX_SIM: str = os.getenv("COLBERT_MULTIVECTOR_MAX_SIM", "MAX_SIM")
     COLBERT_MULTIVECTOR_M: int = int(os.getenv("COLBERT_MULTIVECTOR_M", "0"))
     CROSS_ENCODER_RERANKING_ENABLED: bool = os.getenv("CROSS_ENCODER_RERANKING_ENABLED", "True").lower() == "true"
+    CROSS_ENCODER_MODEL_NAME: str = os.getenv("CROSS_ENCODER_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
     CROSS_ENCODER_TOP_K: int = int(os.getenv("CROSS_ENCODER_TOP_K", "20"))
     CROSS_ENCODER_MAX_CANDIDATES: int = int(os.getenv("CROSS_ENCODER_MAX_CANDIDATES", "40"))
     SEMANTIC_QUERY_CACHE_THRESHOLD: float = float(os.getenv("SEMANTIC_QUERY_CACHE_THRESHOLD", "0.92"))
@@ -129,9 +130,12 @@ class Settings(BaseSettings):
     WFA_FAST_PATH_ENABLED: bool = os.getenv("WFA_FAST_PATH_ENABLED", "True").lower() == "true"
     FAST_PATH_CONFIDENCE_THRESHOLD: float = float(os.getenv("FAST_PATH_CONFIDENCE_THRESHOLD", "0.85"))
     DECISION_TREE_ENABLED: bool = os.getenv("DECISION_TREE_ENABLED", "True").lower() == "true"
-    # LiteLLM routing for moderate complexity reasoning
+    # LiteLLM routing for low-complexity reasoning
     LITELLM_ENABLED: bool = os.getenv("LITELLM_ENABLED", "True").lower() == "true"
     LITELLM_MODEL_NAME: str = os.getenv("LITELLM_MODEL_NAME", "lite-llm/mini")
+    # ZAYA-1B routing for moderate-complexity reasoning
+    ZAYA1B_ENABLED: bool = os.getenv("ZAYA1B_ENABLED", "True").lower() == "true"
+    ZAYA1B_MODEL_NAME: str = os.getenv("ZAYA1B_MODEL_NAME", "zaya-1b")
     # GraphRAG slow path
     GRAPH_RAG_ENABLED: bool = os.getenv("GRAPH_RAG_ENABLED", "True").lower() == "true"
     GRAPH_RAG_DEPTH: int = int(os.getenv("GRAPH_RAG_DEPTH", "3"))

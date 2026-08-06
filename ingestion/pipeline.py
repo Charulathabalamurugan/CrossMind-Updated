@@ -126,10 +126,13 @@ class IngestionPipeline:
             chunk["doc_id"] = doc.get("id") or str(uuid.uuid4())
             chunk["content_hash"] = doc.get("content_hash") or str(hash(content))
         texts = [c["text"] for c in chunks]
-        emb_dim = settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM
-        embeddings = self.embedder.embed_texts(texts, dim=emb_dim)
-        for chunk, emb in zip(chunks, embeddings):
-            chunk["vector"] = emb
+        search_dim = settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM
+        full_dim = settings.EMBEDDING_DIM
+        search_embeddings = self.embedder.embed_texts(texts, dim=search_dim)
+        rerank_embeddings = self.embedder.embed_texts(texts, dim=full_dim) if full_dim != search_dim else search_embeddings
+        for chunk, search_emb, rerank_emb in zip(chunks, search_embeddings, rerank_embeddings):
+            chunk["vector"] = search_emb
+            chunk["rerank_vector"] = rerank_emb
         return chunks
 
     def ingest_documents(self, documents: List[Dict[str, Any]]) -> List[str]:
@@ -196,6 +199,7 @@ class IngestionPipeline:
                     "content_hash": chunk.get("content_hash", ""),
                     "quality_score": q_score,
                 }
+                payload["rerank_vector"] = chunk.get("rerank_vector", [])
                 records_to_upsert.append({
                     "id": doc_id,
                     "vector": chunk.get("vector", []),

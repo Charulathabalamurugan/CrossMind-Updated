@@ -183,6 +183,37 @@ class NeuroSymbolicPipeline:
             },
         }
 
+    def _route_reasoning_model(self, complexity: str) -> str:
+        if complexity in {"low", "factual"}:
+            return "lite_llm"
+        if complexity == "medium" and settings.ZAYA1B_ENABLED:
+            return "zaya1b"
+        return "zaya1_8b"
+
+    def _compress_evidence_context(self, query: str, retrieved_evidence: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        compressed = []
+        query_terms = [term.lower() for term in query.split() if len(term) > 3]
+        for ev in retrieved_evidence:
+            payload = dict(ev.get("payload", {}))
+            content = payload.get("content", "")
+            if not isinstance(content, str):
+                content = ""
+            relevant_sentences = []
+            for sentence in content.split("."):
+                sentence = sentence.strip()
+                if not sentence:
+                    continue
+                if any(term in sentence.lower() for term in query_terms):
+                    relevant_sentences.append(sentence)
+            if not relevant_sentences and content:
+                relevant_sentences = [content[:800]]
+            compressed_content = " ".join(relevant_sentences)[:1600]
+            if len(compressed_content) < len(content):
+                payload["truncated"] = True
+            payload["content"] = compressed_content
+            compressed.append({**ev, "payload": payload})
+        return compressed
+
     def _lite_llm_reasoning(
         self,
         query: str,
@@ -273,11 +304,7 @@ class NeuroSymbolicPipeline:
             filter_metadata["retrieval_strategy"] = "optimized_simple_vector" if is_simple_query else "standard_vector"
 
         # Compress retrieved evidence for reasoning context
-        for ev in retrieved_evidence:
-            content = ev.get("payload", {}).get("content", "")
-            if isinstance(content, str) and len(content) > 800:
-                ev["payload"]["content"] = content[:800] + "..."
-                ev["payload"]["truncated"] = True
+        retrieved_evidence = self._compress_evidence_context(query, retrieved_evidence)
 
         # Multi-agent orchestration (parallel domain processing)
         multi_agent_report = None
@@ -291,9 +318,13 @@ class NeuroSymbolicPipeline:
         graph_seed_context = self.knowledge_graph.graph_rag_context(
             retrieved_evidence, filter_metadata.get("extracted_entities", [])
         )
-        if settings.LITELLM_ENABLED and classification["complexity"] in {"low", "medium"}:
+        routing_mode = self._route_reasoning_model(classification["complexity"])
+        if settings.LITELLM_ENABLED and routing_mode == "lite_llm":
             agent_result = self._lite_llm_reasoning(query, retrieved_evidence, filter_metadata, graph_seed_context)
             filter_metadata["reasoning_model"] = settings.LITELLM_MODEL_NAME
+        elif settings.ZAYA1B_ENABLED and routing_mode == "zaya1b":
+            agent_result = self._lite_llm_reasoning(query, retrieved_evidence, filter_metadata, graph_seed_context)
+            filter_metadata["reasoning_model"] = settings.ZAYA1B_MODEL_NAME
         else:
             agent_result = self.agent.reason_and_synthesize(
                 query, retrieved_evidence, filter_metadata, graph_seed_context
@@ -465,7 +496,10 @@ class NeuroSymbolicPipeline:
         events_recorded.append(evt1)
         yield evt1
 
-        query_vector = self.embedder.embed_text(query)
+        query_vector = self.embedder.embed_text(
+            query,
+            dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM,
+        )
         retrieved_evidence = self.vector_engine.search_with_rbac(
             query_vector=query_vector,
             user_role=user_role,

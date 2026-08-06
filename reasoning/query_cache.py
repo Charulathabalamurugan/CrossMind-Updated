@@ -23,6 +23,7 @@ class QueryResultCache:
         for key in expired:
             self._store.pop(key, None)
             self._timestamps.pop(key, None)
+            self._query_embeddings.pop(key, None)
 
     def _normalize_key(self, key: Any) -> str:
         try:
@@ -103,14 +104,17 @@ class QueryResultCache:
             self._evict_lru()
 
     def delete(self, key: str):
+        normalized_key = self._normalize_key(key)
         with self._lock:
-            self._store.pop(key, None)
-            self._timestamps.pop(key, None)
+            self._store.pop(normalized_key, None)
+            self._timestamps.pop(normalized_key, None)
+            self._query_embeddings.pop(normalized_key, None)
 
     def clear(self):
         with self._lock:
             self._store.clear()
             self._timestamps.clear()
+            self._query_embeddings.clear()
 
     def size(self) -> int:
         with self._lock:

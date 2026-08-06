@@ -111,6 +111,8 @@ class QdrantVectorEngine:
         self.collection_name = settings.QDRANT_COLLECTION_NAME
         self.dim = settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM
         self.full_dim = settings.EMBEDDING_DIM
+        self.search_dim = self.dim
+        self.rerank_dim = self.full_dim
         self.client = None
         self._memory_store = [] # Fallback in-memory store if qdrant client isn't running
         self.bm25 = BM25Engine()
@@ -174,6 +176,10 @@ class QdrantVectorEngine:
             vector = item["vector"]
             payload = dict(item.get("payload", {}))
             payload.setdefault("id", point_id)
+            payload["search_vector_dim"] = len(vector)
+            payload["rerank_vector_dim"] = self.full_dim
+            if payload.get("rerank_vector") is None:
+                payload["rerank_vector"] = []
 
             ids.append(point_id)
 
@@ -378,27 +384,46 @@ class QdrantVectorEngine:
 
             # Apply optional cross-encoder reranking for the top candidates only
             if settings.CROSS_ENCODER_RERANKING_ENABLED and len(merged) > 0:
-                merged = self._cross_encoder_rerank(query_text, merged, top_k=top_k)
+                merged = self._cross_encoder_rerank(query_text, query_vector, merged, top_k=top_k)
 
             return merged[:top_k]
         else:
             results = dense_results[:top_k]
             if settings.CROSS_ENCODER_RERANKING_ENABLED and len(results) > 1:
-                results = self._cross_encoder_rerank(query_text or "", results, top_k=top_k)
+                results = self._cross_encoder_rerank(query_text or "", query_vector, results, top_k=top_k)
             return results[:top_k]
 
-    def _cross_encoder_rerank(self, query_text: str, candidates: List[Dict[str, Any]], top_k: int = 5) -> List[Dict[str, Any]]:
-        """Apply a lightweight cross-encoder rerank over top retrieval candidates."""
-        if not query_text or not candidates:
+    def _cross_encoder_rerank(self, query_text: str, query_vector: List[float], candidates: List[Dict[str, Any]], top_k: int = 5) -> List[Dict[str, Any]]:
+        """Apply a lightweight cross-encoder rerank using stored full-dimension vectors when available."""
+        if not candidates:
             return candidates[:top_k]
+
+        try:
+            import numpy as np
+        except Exception:
+            np = None
+
+        def cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float:
+            if np is None:
+                return 0.0
+            a = np.asarray(vec_a, dtype=np.float32)
+            b = np.asarray(vec_b, dtype=np.float32)
+            if a.size == 0 or b.size == 0:
+                return 0.0
+            dot = float(np.dot(a, b))
+            norm = float(np.linalg.norm(a)) * float(np.linalg.norm(b))
+            return dot / norm if norm > 0 else 0.0
 
         def score_candidate(candidate: Dict[str, Any]) -> float:
             payload = candidate.get("payload", {})
+            rerank_vector = payload.get("rerank_vector") or payload.get("full_vector") or []
+            semantic_score = cosine_similarity(query_vector, rerank_vector) if rerank_vector else 0.0
             text = payload.get("title", "") + " " + payload.get("content", "")
-            combined = f"{query_text} [SEP] {text}"
-            score = float(abs(hash(combined)) % 1000) / 1000.0
+            lexical_score = 0.0
+            if query_text:
+                lexical_score = float(abs(hash(f"{query_text} [SEP] {text}")) % 1000) / 1000.0
             quality_boost = payload.get("quality_score", 0.5)
-            return score * (1.0 + quality_boost * 0.25)
+            return (semantic_score * 0.7 + lexical_score * 0.3) * (1.0 + quality_boost * 0.25)
 
         reranked = sorted(candidates, key=score_candidate, reverse=True)
         return [{**item, "score": float(score_candidate(item))} for item in reranked[:top_k]]
