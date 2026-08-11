@@ -86,7 +86,7 @@ with col_t2:
         st.markdown(f'<span class="tech-tag">{t}</span>', unsafe_allow_html=True)
 with col_t3:
     st.markdown("**Phase 3: Reasoning**")
-    for t in ["ZAYA1-8B", "vLLM", "Scallop", "Semara", "DeforestVIS", "GraphRAG", "WFA", "Decision Tree", "Redis"]:
+    for t in ["ZAYA1-8B", "ZAYA-1B", "LiteLLM", "vLLM", "Scallop", "Semara", "DeforestVIS", "GraphRAG", "WFA", "Decision Tree", "Redis"]:
         st.markdown(f'<span class="tech-tag">{t}</span>', unsafe_allow_html=True)
 with col_t4:
     st.markdown("**Phase 4: Application**")
@@ -96,8 +96,8 @@ with col_t4:
 # ========== 4-Phase Flow ==========
 PHASES = [
     ("📥 Phase 1", "Ingestion", "FastAPI + MinerU + Apache Tika + BGE-M3 + Qdrant + Redis — Extract text, chunk documents, generate dense/sparse embeddings, store in vector DB, cache for efficient data ingestion"),
-    ("🔍 Phase 2", "Retrieval", "BGE-M3 + Qdrant + BM25 + RRF + ColBERT (Server-Side via Qdrant API) + RBAC + Redis — Hybrid semantic and keyword retrieval, rerank via ColBERT, role-based access control"),
-    ("🧠 Phase 3", "Reasoning", "ZAYA1-8B + vLLM + Scallop + Semara + DeforestVIS + GraphRAG + WFA + Decision Tree + Redis — Neuro-symbolic reasoning combining rule-based, ontology-based, graph-based, and LLM-based reasoning"),
+    ("🔍 Phase 2", "Retrieval", "BGE-M3 + Qdrant + BM25 + RRF + Cross-Encoder Reranking + RBAC + Redis — Hybrid semantic and keyword retrieval, rerank via lightweight cross-encoder, role-based access control"),
+    ("🧠 Phase 3", "Reasoning", "ZAYA1-8B + ZAYA-1B + LiteLLM + vLLM + Scallop + Semara + DeforestVIS + GraphRAG + WFA + Decision Tree + Redis — Neuro-symbolic reasoning with model routing and evidence compression"),
     ("📊 Phase 4", "Application", "FastAPI + React/Streamlit + SSE + OpenTelemetry + Prometheus + Redis + DiskCache + DLDB + RBAC — User interface, real-time streaming, performance monitoring, caching, feedback storage"),
 ]
 
@@ -183,7 +183,7 @@ if run_clicked and query_input:
         elif i == 2:
             # Phase 2: Retrieval
             with st.expander("🔍 Phase 2: Retrieval Details", expanded=True):
-                st.markdown("**Technologies:** BGE-M3, Qdrant, BM25, RRF, ColBERT (Server-Side via Qdrant API), RBAC, Redis")
+                st.markdown("**Technologies:** BGE-M3, Qdrant, BM25, RRF, Cross-Encoder Reranking, RBAC, Redis")
                 evidence = result.get("retrieved_evidence", [])
                 st.markdown(f"**Retrieved {len(evidence)} evidence chunks**")
                 for idx, ev in enumerate(evidence[:5], 1):
@@ -214,11 +214,11 @@ if run_clicked and query_input:
                 if "optimized" in retrieval_strategy.lower():
                     st.success("⚡ Conditional Retrieval Optimization triggered: bypassed expensive GraphRAG/multi-agent processing for simple factual query!")
                 
-                col_bm25, col_rrf, col_colbert = st.columns(3)
+                col_bm25, col_rrf, col_rerank = st.columns(3)
                 col_bm25.metric("BM25", "Enabled", "✓")
                 col_rrf.metric("RRF Fusion", "Enabled", "✓")
-                col_colbert.metric("ColBERT Rerank", "Server-Side via Qdrant API", "✓")
-                col_colbert.caption("MultiVectorConfig(max_sim=MAX_SIM, m=0)")
+                col_rerank.metric("Cross-Encoder Rerank", "Enabled", "✓")
+                col_rerank.caption("Lightweight cosine + lexical over stored full-dim vectors")
                 
                 if user_role:
                     st.markdown(f"**RBAC Role:** `{user_role}` — inline filtering applied at retrieval layer")
@@ -226,17 +226,39 @@ if run_clicked and query_input:
         elif i == 3:
             # Phase 3: Reasoning
             with st.expander("🧠 Phase 3: Reasoning Details", expanded=True):
-                st.markdown("**Technologies:** ZAYA1-8B, vLLM, Scallop, Semara, DeforestVIS, GraphRAG, WFA, Decision Tree, Redis")
+                st.markdown("**Technologies:** ZAYA1-8B, ZAYA-1B, LiteLLM, vLLM, Scallop, Semara, DeforestVIS, GraphRAG, WFA, Decision Tree, Redis")
                 
                 agent = result.get("agent_reasoning", {})
                 think = agent.get("think_block", "")
-                st.markdown("**ZAYA1-8B Agent Reasoning:**")
+                st.markdown("**Agent Reasoning:**")
                 st.code(think[:1000] + ("..." if len(think) > 1000 else ""), language="text")
                 
+                pre_filter = result.get("pre_filter", {})
+                classification = pre_filter.get("query_classification", {})
+                routing_model = pre_filter.get("reasoning_model", "zaya1_8b")
                 col_rr1, col_rr2, col_rr3 = st.columns(3)
                 col_rr1.metric("vLLM", "Enabled", "max-num-seqs=2 (RTX 4090 OOM guard)")
                 col_rr2.metric("WFA + Decision Tree", "Fast path (80% queries)", "<10ms O(1)")
                 col_rr3.metric("GraphRAG", "Slow path (15%)", "Multi-hop graph traversal")
+                
+                col_rt1, col_rt2, col_rt3 = st.columns(3)
+                col_rt1.metric("Query Complexity", classification.get("complexity", "N/A").upper())
+                col_rt2.metric("Routed Model", routing_model.upper())
+                col_rt3.metric("Evidence Compression", "Enabled", "Query-relevant sentences")
+
+                st.markdown("**📊 Routing Metrics:**")
+                metrics_data, metrics_err = call_api("/api/routing/metrics", method="GET", timeout=10)
+                if not metrics_err and metrics_data:
+                    col_m1, col_m2, col_m3 = st.columns(3)
+                    col_m1.metric("Total Queries", metrics_data.get("total_queries", 0))
+                    col_m2.metric("Avg Latency", f"{metrics_data.get('overall_avg_latency_ms', 0):.1f}ms")
+                    col_m3.metric("Avg Quality", f"{metrics_data.get('overall_avg_quality', 0):.3f}")
+                    with st.expander("Model Selection Distribution", expanded=False):
+                        st.json(metrics_data.get("model_selection_distribution", {}))
+                    with st.expander("Complexity Distribution", expanded=False):
+                        st.json(metrics_data.get("complexity_distribution", {}))
+                else:
+                    st.caption("Routing metrics not available yet. Run a few queries to collect data.")
                 
                 st.markdown("**Extended Reasoning Stack:**")
                 col_s1, col_s2, col_s3 = st.columns(3)
@@ -264,6 +286,91 @@ if run_clicked and query_input:
                 
                 st.markdown("**Generated Hypothesis:**")
                 st.info(agent.get("hypothesis", agent.get("output_text", "No hypothesis"))[:500])
+                
+                st.markdown("**🕸️ Knowledge Graph Visualization:**")
+                st.caption("Graph shown as 1D scatter for clarity. Node positions indicate similarity ordering, not spatial relationships.")
+                view_mode = st.radio(
+                    "Graph view",
+                    ["Simplified (1D scatter)", "Network (force-directed)"],
+                    horizontal=True,
+                    key="graph_view_mode",
+                )
+                cg = result.get("graph_rag", {})
+                graph_nodes = cg.get("nodes", [])
+                graph_edges = cg.get("edges", [])
+                if graph_nodes and graph_edges:
+                    node_ids = {node["id"]: idx for idx, node in enumerate(graph_nodes)}
+                    node_colors = []
+                    node_sizes = []
+                    for node in graph_nodes:
+                        ntype = node.get("type", "document")
+                        if ntype == "document":
+                            node_colors.append("#3B82F6")
+                            node_sizes.append(12)
+                        else:
+                            node_colors.append("#10B981")
+                            node_sizes.append(8)
+
+                    if view_mode.startswith("Network"):
+                        import networkx as nx
+                        G = nx.Graph()
+                        for node in graph_nodes:
+                            G.add_node(node["id"], label=node.get("label", node["id"]))
+                        for edge in graph_edges:
+                            src = edge.get("source")
+                            tgt = edge.get("target")
+                            if src and tgt:
+                                G.add_edge(src, tgt)
+                        pos = nx.spring_layout(G, seed=42, k=0.3)
+                        edge_x = []
+                        edge_y = []
+                        for edge in graph_edges:
+                            src = edge.get("source")
+                            tgt = edge.get("target")
+                            if src in pos and tgt in pos:
+                                edge_x.extend([pos[src][0], pos[tgt][0], None])
+                                edge_y.extend([pos[src][1], pos[tgt][1], None])
+                        node_x = [pos[node["id"]][0] for node in graph_nodes]
+                        node_y = [pos[node["id"]][1] for node in graph_nodes]
+                    else:
+                        edge_x = []
+                        edge_y = []
+                        for edge in graph_edges:
+                            src = node_ids.get(edge.get("source"))
+                            tgt = node_ids.get(edge.get("target"))
+                            if src is not None and tgt is not None:
+                                edge_x.extend([src, tgt, None])
+                                edge_y.extend([0, 0, None])
+                        node_x = list(range(len(graph_nodes)))
+                        node_y = [0] * len(graph_nodes)
+
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=edge_x, y=edge_y,
+                        mode="lines",
+                        line=dict(width=1, color="#9CA3AF"),
+                        hoverinfo="none",
+                        name="edges"
+                    ))
+                    fig.add_trace(go.Scatter(
+                        x=node_x, y=node_y,
+                        mode="markers+text",
+                        marker=dict(size=node_sizes, color=node_colors, line=dict(width=1, color="#FFFFFF")),
+                        text=[node.get("label", node["id"])[:20] for node in graph_nodes],
+                        textposition="top center",
+                        hoverinfo="text",
+                        name="nodes"
+                    ))
+                    fig.update_layout(
+                        title="GraphRAG Knowledge Graph",
+                        showlegend=False,
+                        margin=dict(l=20, r=20, t=40, b=20),
+                        height=400,
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    st.caption(f"Nodes: {len(graph_nodes)} | Edges: {len(graph_edges)} | Paths: {len(cg.get('multi_hop_paths', []))}")
+                else:
+                    st.caption("No graph data available for visualization.")
                 
                 st.markdown("**Was this hypothesis helpful?**")
                 col_fb1, col_fb2 = st.columns([1, 10])

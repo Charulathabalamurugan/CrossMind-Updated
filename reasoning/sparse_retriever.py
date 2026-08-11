@@ -4,6 +4,7 @@ import hashlib
 from typing import List, Dict, Any, Optional
 from config import settings
 from ingestion.sparse_vector import get_sparse_vector_engine
+from vector_store.vector_adapter import get_vector_adapter
 
 logger = logging.getLogger("crossmind.sparse_retriever")
 
@@ -17,6 +18,7 @@ class SparseRetriever:
         self.rrf_k = getattr(settings, "RRF_K", 60)
         self.cache_ttl = getattr(settings, "REDIS_RETRIEVAL_CACHE_TTL", 1800)
         self.cache_max = getattr(settings, "REDIS_RETRIEVAL_CACHE_MAX", 10000)
+        self.adapter = get_vector_adapter()
         self._redis_cache = None
         self._init_redis_cache()
 
@@ -172,30 +174,6 @@ class SparseRetriever:
                     "source": "sparse_only",
                     "fusion_sources": ["sparse"],
                     "quality_score": q_score,
-                }
-        ranked = sorted(merged.values(), key=lambda x: x["score"], reverse=True)
-        return ranked[:top_k]
-        sparse_score_map = {r["doc_id"]: r["score"] * sparse_weight for r in sparse_results}
-        merged = {}
-        for doc in dense_results:
-            doc_id = str(doc.get("id", ""))
-            merged[doc_id] = {
-                **doc,
-                "score": doc.get("score", 0.0) * dense_weight,
-                "fusion_sources": ["dense"],
-            }
-        for sparse in sparse_results:
-            doc_id = sparse["doc_id"]
-            score = sparse["score"] * sparse_weight
-            if doc_id in merged:
-                merged[doc_id]["score"] += score
-                merged[doc_id]["fusion_sources"].append("sparse")
-            else:
-                merged[doc_id] = {
-                    "id": doc_id,
-                    "score": score,
-                    "source": "sparse_only",
-                    "fusion_sources": ["sparse"],
                 }
         ranked = sorted(merged.values(), key=lambda x: x["score"], reverse=True)
         return ranked[:top_k]

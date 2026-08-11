@@ -1,7 +1,8 @@
 import numpy as np
 import logging
-from typing import List
+from typing import Any, Dict, List
 from config import settings
+from vector_store.vector_adapter import get_vector_adapter
 
 logger = logging.getLogger("crossmind.embedding")
 
@@ -14,6 +15,7 @@ class Embedder:
     def __init__(self, model_name: str = "BGE-M3", dim: int = settings.EMBEDDING_DIM):
         self.model_name = model_name
         self.dim = dim
+        self.adapter = get_vector_adapter()
         logger.info(f"Initialized DSKE Embedding Engine ({self.model_name}) with dimension {self.dim}")
 
     def embed_texts(self, texts: List[str], dim: int = None) -> List[List[float]]:
@@ -26,6 +28,11 @@ class Embedder:
 
     def embed_text(self, text: str, dim: int = None) -> List[float]:
         return self.embed_texts([text], dim=dim)[0]
+
+    def embed_and_normalize(self, text: str, dim: int = None) -> Dict[str, Any]:
+        effective_dim = dim if dim is not None else self.dim
+        raw = self._deterministic_vector(text, effective_dim)
+        return self.adapter.normalize(raw, force_dim=effective_dim)
 
     def _deterministic_vector(self, text: str, dim: int) -> List[float]:
         """Generates a stable, reproducible normalized vector based on text feature hashing (DSKE)."""
@@ -47,6 +54,12 @@ class Embedder:
             vec = np.ones(dim, dtype=np.float32) / np.sqrt(dim)
             
         return vec.tolist()
+
+    def normalize_vector(self, vector, force_dim: int = None) -> Dict[str, Any]:
+        return self.adapter.normalize(vector, force_dim=force_dim or self.dim)
+
+    def reshape_vector(self, flat_vector: List[float], meta: Dict[str, Any]):
+        return self.adapter.reshape(flat_vector, meta)
 
 _embedder_instance = None
 

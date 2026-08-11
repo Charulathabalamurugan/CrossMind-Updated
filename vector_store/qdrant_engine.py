@@ -5,6 +5,7 @@ import collections
 from typing import List, Dict, Any, Optional
 from config import settings
 from ingestion.embedding import get_embedder
+from vector_store.vector_adapter import get_vector_adapter
 
 logger = logging.getLogger("crossmind.vector_store")
 
@@ -105,7 +106,8 @@ class QdrantVectorEngine:
     """
     Phase 2: Secure Vector Retrieval Engine powered by Qdrant.
     Supports HNSW indexing, 256-dim Matryoshka vectors, scalar quantization,
-    and inline RBAC payload filtering. Uses ColBERT for deep checking/reranking.
+    universal vector adapter for multi-vector/tensor/sparse inputs,
+    and inline RBAC payload filtering. Uses cross-encoder for reranking.
     """
     def __init__(self):
         self.collection_name = settings.QDRANT_COLLECTION_NAME
@@ -116,6 +118,7 @@ class QdrantVectorEngine:
         self.client = None
         self._memory_store = [] # Fallback in-memory store if qdrant client isn't running
         self.bm25 = BM25Engine()
+        self.adapter = get_vector_adapter()
         self._init_qdrant()
 
     def _init_qdrant(self):
@@ -135,12 +138,22 @@ class QdrantVectorEngine:
             collections = [c.name for c in self.client.get_collections().collections]
             if self.collection_name not in collections:
                 logger.info(f"Creating Qdrant collection '{self.collection_name}' with vector size {self.dim} & HNSW index")
+                multivector_config = None
+                if settings.MULTIVECTOR_SEARCH_ENABLED:
+                    multivector_config = rest_models.MultiVectorConfig(
+                        comparator=rest_models.MultiVectorComparator.MAX_SIM
+                    )
+                sparse_vector_config = None
+                if settings.SPARSE_VECTOR_ENABLED:
+                    sparse_vector_config = rest_models.SparseVectorParams(index=rest_models.SparseIndexParams(full_scan_threshold=10000))
                 self.client.create_collection(
                     collection_name=self.collection_name,
                     vectors_config=rest_models.VectorParams(
                         size=self.dim,
-                        distance=rest_models.Distance.COSINE
+                        distance=rest_models.Distance.COSINE,
+                        multivector_config=multivector_config,
                     ),
+                    sparse_vectors_config=sparse_vector_config,
                     hnsw_config=rest_models.HnswConfigDiff(
                         m=16,
                         ef_construct=100
@@ -155,7 +168,7 @@ class QdrantVectorEngine:
                         )
                     )
                 )
-                logger.info("Collection created successfully with scalar quantization.")
+                logger.info("Collection created successfully with advanced vector config.")
         except Exception as e:
             logger.warning(f"Failed to initialize Qdrant client ({e}). Reverting to memory storage.")
             self.client = None
@@ -165,7 +178,7 @@ class QdrantVectorEngine:
         Inserts or updates vector records in Qdrant and indices them in BM25.
         Each record should contain:
           - id (optional, generated if missing)
-          - vector (List[float] of dim BGE_M3_RETRIEVAL_DIM)
+          - vector (List[float], List[List[float]], np.ndarray, or Dict[int, float])
           - payload (Dict containing text, domain, roles, metadata)
         """
         ids = []
@@ -173,13 +186,22 @@ class QdrantVectorEngine:
 
         for item in records:
             point_id = item.get("id") or str(uuid.uuid4())
-            vector = item["vector"]
+            raw_vector = item["vector"]
             payload = dict(item.get("payload", {}))
             payload.setdefault("id", point_id)
-            payload["search_vector_dim"] = len(vector)
+
+            # Normalize any vector type to flat dense + metadata
+            adapter_out = self.adapter.normalize(raw_vector, force_dim=self.dim)
+            flat_vector = adapter_out.get("flat_vector", [])
+            vector_meta = adapter_out.get("vector_meta", {})
+
+            payload["search_vector_dim"] = len(flat_vector)
             payload["rerank_vector_dim"] = self.full_dim
+            payload["vector_meta"] = vector_meta
             if payload.get("rerank_vector") is None:
                 payload["rerank_vector"] = []
+            if vector_meta.get("type") == "multi_vector" and not payload.get("rerank_vector"):
+                payload["rerank_vector"] = flat_vector[:self.full_dim] + [0.0] * max(0, self.full_dim - len(flat_vector))
 
             ids.append(point_id)
 
@@ -190,13 +212,31 @@ class QdrantVectorEngine:
             self.bm25.index_document(point_id, f"{title} {content} {tags}", payload)
 
             if self.client and QDRANT_CLIENT_INSTALLED:
-                # Qdrant point IDs must be UUIDs or integers. Preserve the
-                # external, human-readable document ID in the payload.
                 qdrant_point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, str(point_id)))
+                vector_payload = {"vector": flat_vector}
+                sparse_vector = None
+                if settings.SPARSE_VECTOR_ENABLED and vector_meta.get("type") == "sparse":
+                    sparse_vector = rest_models.SparseVector(
+                        indices=vector_meta.get("indices", []),
+                        values=vector_meta.get("values", []),
+                    )
+                multivector = None
+                if settings.MULTIVECTOR_SEARCH_ENABLED and vector_meta.get("type") == "multi_vector":
+                    shape = vector_meta.get("shape")
+                    if shape and len(shape) == 2:
+                        multivector = [
+                            flat_vector[i * shape[1]:(i + 1) * shape[1]]
+                            for i in range(shape[0])
+                        ]
+                if multivector is not None:
+                    vector_payload = {"multivector": multivector}
+                elif sparse_vector is not None:
+                    vector_payload = {"sparse_vector": sparse_vector}
+
                 qdrant_points.append(
                     rest_models.PointStruct(
                         id=qdrant_point_id,
-                        vector=vector,
+                        vector=vector_payload if not sparse_vector else {"dense": flat_vector, "sparse": sparse_vector},
                         payload=payload
                     )
                 )
@@ -204,7 +244,7 @@ class QdrantVectorEngine:
             # Store in local fallback store as well
             self._memory_store.append({
                 "id": point_id,
-                "vector": vector,
+                "vector": flat_vector,
                 "payload": payload
             })
 
@@ -288,19 +328,41 @@ class QdrantVectorEngine:
                 result_limit = min(settings.CROSS_ENCODER_MAX_CANDIDATES, max(top_k * 3, top_k * 2))
 
                 if hasattr(self.client, "search"):
-                    search_res = self.client.search(
-                        collection_name=self.collection_name,
-                        query_vector=query_vector,
-                        query_filter=query_filter,
-                        limit=result_limit
-                    )
+                    if settings.MULTIVECTOR_SEARCH_ENABLED:
+                        search_res = self.client.search(
+                            collection_name=self.collection_name,
+                            query_vector=rest_models.MultiVectorQuery(
+                                vector=query_vector,
+                                method=rest_models.MultiVectorSearch.MAX_SIM
+                            ),
+                            query_filter=query_filter,
+                            limit=result_limit
+                        )
+                    else:
+                        search_res = self.client.search(
+                            collection_name=self.collection_name,
+                            query_vector=query_vector,
+                            query_filter=query_filter,
+                            limit=result_limit
+                        )
                 else:
-                    search_res = self.client.query_points(
-                        collection_name=self.collection_name,
-                        query=query_vector,
-                        query_filter=query_filter,
-                        limit=result_limit
-                    ).points
+                    if settings.MULTIVECTOR_SEARCH_ENABLED:
+                        search_res = self.client.query_points(
+                            collection_name=self.collection_name,
+                            query=rest_models.MultiVectorQuery(
+                                vector=query_vector,
+                                method=rest_models.MultiVectorSearch.MAX_SIM
+                            ),
+                            query_filter=query_filter,
+                            limit=result_limit
+                        ).points
+                    else:
+                        search_res = self.client.query_points(
+                            collection_name=self.collection_name,
+                            query=query_vector,
+                            query_filter=query_filter,
+                            limit=result_limit
+                        ).points
 
                 for hit in search_res:
                     dense_results.append({
@@ -403,21 +465,11 @@ class QdrantVectorEngine:
         except Exception:
             np = None
 
-        def cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float:
-            if np is None:
-                return 0.0
-            a = np.asarray(vec_a, dtype=np.float32)
-            b = np.asarray(vec_b, dtype=np.float32)
-            if a.size == 0 or b.size == 0:
-                return 0.0
-            dot = float(np.dot(a, b))
-            norm = float(np.linalg.norm(a)) * float(np.linalg.norm(b))
-            return dot / norm if norm > 0 else 0.0
-
         def score_candidate(candidate: Dict[str, Any]) -> float:
             payload = candidate.get("payload", {})
             rerank_vector = payload.get("rerank_vector") or payload.get("full_vector") or []
-            semantic_score = cosine_similarity(query_vector, rerank_vector) if rerank_vector else 0.0
+            vector_meta = payload.get("vector_meta", {})
+            semantic_score = self.adapter.cosine_similarity(query_vector, rerank_vector, {}, vector_meta) if rerank_vector else 0.0
             text = payload.get("title", "") + " " + payload.get("content", "")
             lexical_score = 0.0
             if query_text:
@@ -427,6 +479,47 @@ class QdrantVectorEngine:
 
         reranked = sorted(candidates, key=score_candidate, reverse=True)
         return [{**item, "score": float(score_candidate(item))} for item in reranked[:top_k]]
+
+    def search_3d_tensors(self, query_tensor, top_k: int = 5) -> List[Dict[str, Any]]:
+        """3D tensor similarity search using flattened vectors with shape metadata."""
+        if not settings.TENSOR_3D_INDEXING_ENABLED:
+            return []
+        try:
+            import numpy as np
+        except Exception:
+            np = None
+        if np is None:
+            return []
+
+        q_flat = np.array(query_tensor, dtype=np.float32).flatten()
+        q_norm = np.linalg.norm(q_flat)
+        if q_norm > 0:
+            q_flat = q_flat / q_norm
+
+        scored = []
+        for item in self._memory_store:
+            payload = item.get("payload", {})
+            vector_meta = payload.get("vector_meta", {})
+            if vector_meta.get("type") != "dense":
+                continue
+            shape = vector_meta.get("shape")
+            if shape and len(shape) == 3:
+                v = np.array(item["vector"], dtype=np.float32)
+                if v.shape[0] != q_flat.shape[0]:
+                    continue
+                v_norm = np.linalg.norm(v)
+                if v_norm > 0:
+                    v = v / v_norm
+                score = float(np.dot(q_flat, v))
+                scored.append({
+                    "id": item["id"],
+                    "score": score,
+                    "payload": payload,
+                    "shape": shape,
+                })
+
+        scored.sort(key=lambda x: x["score"], reverse=True)
+        return scored[:top_k]
 
 _qdrant_engine_instance = None
 

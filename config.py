@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     QDRANT_COLLECTION_NAME: str = os.getenv("QDRANT_COLLECTION_NAME", "crossmind_knowledge")
     PRODUCT_QUANTIZATION_ENABLED: bool = os.getenv("PRODUCT_QUANTIZATION_ENABLED", "True").lower() == "true"
     DOMAIN_QDRANT_COLLECTIONS: bool = os.getenv("DOMAIN_QDRANT_COLLECTIONS", "False").lower() == "true"
+    # Advanced vector features
+    MULTIVECTOR_SEARCH_ENABLED: bool = os.getenv("MULTIVECTOR_SEARCH_ENABLED", "False").lower() == "true"
+    SPARSE_VECTOR_ENABLED: bool = os.getenv("SPARSE_VECTOR_ENABLED", "False").lower() == "true"
+    TENSOR_3D_INDEXING_ENABLED: bool = os.getenv("TENSOR_3D_INDEXING_ENABLED", "False").lower() == "true"
     # Redis caching
     REDIS_QUERY_CACHE_TTL: int = int(os.getenv("REDIS_QUERY_CACHE_TTL", "3600"))
     REDIS_QUERY_CACHE_MAX: int = int(os.getenv("REDIS_QUERY_CACHE_MAX", "5000"))

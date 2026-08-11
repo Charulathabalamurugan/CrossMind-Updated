@@ -7,6 +7,7 @@ import diskcache as dc
 from reasoning.symbolic_filter import SymbolicPreFilter, SymbolicPostValidator
 from reasoning.rxg_nano_agent import ZAYA1_8BAgent
 from vector_store.qdrant_engine import get_qdrant_engine
+from vector_store.vector_adapter import get_vector_adapter
 from ingestion.embedding import get_embedder
 from reasoning.knowledge_graph import get_knowledge_graph, DiscoveryScorer, ConfidenceCalibrator
 from reasoning.traceability import build_evidence_traces
@@ -26,6 +27,7 @@ from reasoning.deforest_vis import DeforestVIS
 from reasoning.wfa_fast_path import get_wfa_engine
 from reasoning.semara_reasoner import SemaraReasoner
 from reasoning.query_classifier import get_query_classifier
+from reasoning.routing_metrics import get_routing_metrics
 
 logger = logging.getLogger("crossmind.neuro_symbolic")
 
@@ -57,6 +59,8 @@ class NeuroSymbolicPipeline:
         self.knowledge_graph = get_knowledge_graph()
         self.memory_service = get_memory_service()
         self.abductive_engine = AbductiveReasoningEngine()
+        self.adapter = get_vector_adapter()
+        self.routing_metrics = get_routing_metrics()
         self._cache = {}
 
         # Advanced engines
@@ -95,10 +99,12 @@ class NeuroSymbolicPipeline:
         experimental_blueprint: Dict[str, Any] = None,
         collaboration_recommendations: Dict[str, Any] = None,
         risk_summary: Dict[str, Any] = None,
+        graph_context: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
-        graph_context = self.knowledge_graph.graph_rag_context(
-            retrieved_evidence, filter_metadata.get("extracted_entities", [])
-        )
+        if graph_context is None:
+            graph_context = self.knowledge_graph.graph_rag_context(
+                retrieved_evidence, filter_metadata.get("extracted_entities", [])
+            )
         discovery_score = DiscoveryScorer.score(retrieved_evidence, graph_context)
         confidence_calibration = ConfidenceCalibrator.calibrate(
             agent_result.get("confidence_score", 0.0),
@@ -294,8 +300,9 @@ class NeuroSymbolicPipeline:
             filter_metadata["retrieval_strategy"] = hybrid_result.get("strategy", "hybrid_rag_kg")
         else:
             query_vector = self.embedder.embed_text(query, dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM)
+            normalized_query = self.adapter.normalize(query_vector, force_dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM)
             retrieved_evidence = self.vector_engine.search_with_rbac(
-                query_vector=query_vector,
+                query_vector=normalized_query.get("flat_vector", query_vector),
                 user_role=user_role,
                 allowed_domains=filter_metadata["detected_domains"],
                 top_k=5,
@@ -371,6 +378,7 @@ class NeuroSymbolicPipeline:
             None,
             None,
             risk_summary,
+            graph_seed_context,
         )
 
         # Record feedback for risk-controlled learning
@@ -467,6 +475,19 @@ class NeuroSymbolicPipeline:
         ]
 
         self._cache[cache_key] = {"result": result, "events": events_recorded}
+
+        routing_mode = self._route_reasoning_model(classification["complexity"])
+        selected_model = filter_metadata.get("reasoning_model", "zaya1_8b")
+        quality_score = agent_result.get("confidence_score", 0.0)
+        self.routing_metrics.record_query(
+            query=query,
+            complexity=classification["complexity"],
+            model=selected_model,
+            latency_ms=agent_time_s * 1000,
+            quality_score=quality_score,
+            evidence_count=len(retrieved_evidence),
+        )
+
         return result
 
     def stream_query(
@@ -500,8 +521,9 @@ class NeuroSymbolicPipeline:
             query,
             dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM,
         )
+        normalized_query = self.adapter.normalize(query_vector, force_dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM)
         retrieved_evidence = self.vector_engine.search_with_rbac(
-            query_vector=query_vector,
+            query_vector=normalized_query.get("flat_vector", query_vector),
             user_role=user_role,
             allowed_domains=filter_metadata["detected_domains"],
             top_k=5,
@@ -560,6 +582,7 @@ class NeuroSymbolicPipeline:
             0.0,
             0.0,
             abductive_result=abductive_result,
+            graph_context=graph_seed_context,
         )
 
         if settings.DUAL_MEMORY_ENABLED:

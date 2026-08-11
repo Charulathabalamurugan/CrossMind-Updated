@@ -21,7 +21,7 @@ from reasoning.risk_feedback import get_risk_feedback_engine
 from reasoning.evaluation import evaluate_system_retrieval
 from reasoning.query_cache import get_query_cache
 from ingestion.queue_manager import get_queue_manager
-from reasoning.benchmark_collector import get_benchmark_collector
+from reasoning.routing_metrics import get_routing_metrics
 from reasoning.feedback_collector import get_feedback_collector
 from reasoning.rule_engine import get_rule_engine
 from reasoning.rule_updater import get_rule_updater
@@ -286,6 +286,11 @@ async def get_metrics():
         }
     }
 
+@app.get("/api/routing/metrics")
+async def get_routing_metrics_endpoint():
+    metrics = get_routing_metrics()
+    return metrics.get_summary(limit=200)
+
 @app.get("/api/graph/browser")
 async def get_graph_browser_data():
     pipeline = get_neuro_symbolic_pipeline()
@@ -409,3 +414,127 @@ async def get_model_retrain_status():
     status = retrainer.get_status()
     logger.info("Model retrainer status requested")
     return {"status": "success", "model_retrainer_status": status}
+
+# ========== Auth & Multi-User ==========
+from reasoning.auth_service import AuthService
+from reasoning.user_profiles import UserProfileService
+from reasoning.auto_discover import AutoDiscoverEngine
+from reasoning.simulation_client import SimulationClient
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/auth/login")
+async def auth_login(req: LoginRequest):
+    user = AuthService.authenticate(req.username, req.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    tokens = AuthService.create_tokens(user)
+    return {"status": "success", **tokens}
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+@app.post("/api/auth/refresh")
+async def auth_refresh(req: RefreshRequest):
+    tokens = AuthService.refresh_access_token(req.refresh_token)
+    if not tokens:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+    return {"status": "success", **tokens}
+
+@app.get("/api/auth/users")
+async def list_users():
+    return {"status": "success", "users": AuthService.list_users()}
+
+class CreateUserRequest(BaseModel):
+    username: str
+    password: str
+    email: str
+    roles: List[str]
+    full_name: str = ""
+
+@app.post("/api/auth/users")
+async def create_user(req: CreateUserRequest):
+    user = AuthService.create_user(req.username, req.password, req.email, req.roles, req.full_name)
+    if not user:
+        raise HTTPException(status_code=409, detail="Username already exists")
+    return {"status": "success", "user": user}
+
+# ========== User Profiles ==========
+class SaveQueryRequest(BaseModel):
+    query: str
+    tags: List[str] = []
+    note: str = ""
+
+@app.post("/api/users/{user_id}/queries/save")
+async def save_query(user_id: str, req: SaveQueryRequest):
+    saved = UserProfileService.save_query(user_id, req.query, req.tags, req.note)
+    return {"status": "success", "saved_query": saved}
+
+@app.get("/api/users/{user_id}/queries/history")
+async def query_history(user_id: str, limit: int = Query(50, ge=1, le=200)):
+    return {"status": "success", "history": UserProfileService.get_history(user_id, limit)}
+
+@app.get("/api/users/{user_id}/queries/saved")
+async def saved_queries(user_id: str, limit: int = Query(100, ge=1, le=500)):
+    return {"status": "success", "saved_queries": UserProfileService.get_saved_queries(user_id, limit)}
+
+@app.delete("/api/users/{user_id}/queries/saved/{saved_id}")
+async def delete_saved_query(user_id: str, saved_id: str):
+    ok = UserProfileService.delete_saved_query(user_id, saved_id)
+    return {"status": "success" if ok else "not_found", "deleted": ok}
+
+@app.get("/api/users/{user_id}/profile")
+async def get_user_profile(user_id: str):
+    return {"status": "success", "profile": UserProfileService.get_profile(user_id)}
+
+class UpdatePreferencesRequest(BaseModel):
+    preferences: Dict[str, Any]
+
+@app.post("/api/users/{user_id}/profile/preferences")
+async def update_preferences(user_id: str, req: UpdatePreferencesRequest):
+    profile = UserProfileService.update_preferences(user_id, req.preferences)
+    return {"status": "success", "profile": profile}
+
+# ========== Auto-Discover ==========
+class AutoDiscoverStartRequest(BaseModel):
+    interval_seconds: int = Field(300, ge=60, le=86400)
+
+@app.post("/api/autodiscover/start")
+async def autodiscover_start(req: AutoDiscoverStartRequest):
+    status = AutoDiscoverEngine.start_continuous_discovery(pipeline_callable=None, interval_seconds=req.interval_seconds)
+    return {"status": "success", **status}
+
+@app.post("/api/autodiscover/stop")
+async def autodiscover_stop():
+    status = AutoDiscoverEngine.stop_discovery()
+    return {"status": "success", **status}
+
+@app.get("/api/autodiscover/status")
+async def autodiscover_status():
+    return {"status": "success", **AutoDiscoverEngine.get_status()}
+
+@app.get("/api/autodiscover/discoveries")
+async def autodiscover_discoveries(limit: int = Query(50, ge=1, le=200)):
+    return {"status": "success", "discoveries": AutoDiscoverEngine.get_discoveries(limit)}
+
+# ========== Simulation Integration ==========
+class SimulationRunRequest(BaseModel):
+    hypothesis: Dict[str, Any]
+    domain: str = "materials"
+
+@app.post("/api/simulation/run")
+async def simulation_run(req: SimulationRunRequest):
+    result = SimulationClient.propose_and_run(req.hypothesis, req.domain)
+    return {"status": "success", "simulation": result}
+
+@app.post("/api/simulation/log")
+async def simulation_log(hypothesis_id: str = Form(...), domain: str = Form(...), outcome: str = Form(...)):
+    import json as _json
+    try:
+        outcome_data = _json.loads(outcome)
+    except Exception:
+        outcome_data = {"raw": outcome}
+    entry = SimulationClient.log_attempt(hypothesis_id, domain, outcome_data)
+    return {"status": "success", "log": entry}

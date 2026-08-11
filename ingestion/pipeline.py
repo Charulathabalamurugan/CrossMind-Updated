@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 from config import settings
 from ingestion.embedding import get_embedder
 from vector_store.qdrant_engine import get_qdrant_engine
+from vector_store.vector_adapter import get_vector_adapter
 from reasoning.knowledge_graph import get_knowledge_graph
 from ingestion.active_learning import get_active_learning_engine
 from ingestion.ingestion_cache import get_ingestion_cache
@@ -41,6 +42,7 @@ class IngestionPipeline:
         self.knowledge_graph = get_knowledge_graph()
         self.cache = get_ingestion_cache()
         self.active_learning = get_active_learning_engine()
+        self.adapter = get_vector_adapter()
         self._initialized = False
 
         # Phase 1 components
@@ -128,8 +130,17 @@ class IngestionPipeline:
         texts = [c["text"] for c in chunks]
         search_dim = settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM
         full_dim = settings.EMBEDDING_DIM
-        search_embeddings = self.embedder.embed_texts(texts, dim=search_dim)
-        rerank_embeddings = self.embedder.embed_texts(texts, dim=full_dim) if full_dim != search_dim else search_embeddings
+        raw_search_embeddings = self.embedder.embed_texts(texts, dim=search_dim)
+        raw_rerank_embeddings = self.embedder.embed_texts(texts, dim=full_dim) if full_dim != search_dim else raw_search_embeddings
+        
+        search_embeddings = []
+        rerank_embeddings = []
+        for raw_search, raw_rerank in zip(raw_search_embeddings, raw_rerank_embeddings):
+            search_norm = self.adapter.normalize(raw_search, force_dim=search_dim)
+            rerank_norm = self.adapter.normalize(raw_rerank, force_dim=full_dim)
+            search_embeddings.append(search_norm.get("flat_vector", raw_search))
+            rerank_embeddings.append(rerank_norm.get("flat_vector", raw_rerank))
+        
         for chunk, search_emb, rerank_emb in zip(chunks, search_embeddings, rerank_embeddings):
             chunk["vector"] = search_emb
             chunk["rerank_vector"] = rerank_emb
@@ -245,8 +256,9 @@ class IngestionPipeline:
             return semantic_cached
 
         query_vector = self.embedder.embed_text(query, dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM)
+        normalized_query = self.adapter.normalize(query_vector, force_dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM)
         dense_results = self.vector_engine.search_with_rbac(
-            query_vector=query_vector,
+            query_vector=normalized_query.get("flat_vector", query_vector),
             user_role=user_role,
             allowed_domains=[],
             top_k=top_k,

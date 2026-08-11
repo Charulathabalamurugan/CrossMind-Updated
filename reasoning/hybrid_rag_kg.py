@@ -3,6 +3,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from reasoning.knowledge_graph import KnowledgeGraph, DiscoveryScorer
 from vector_store.qdrant_engine import get_qdrant_engine
+from vector_store.vector_adapter import get_vector_adapter
 from ingestion.embedding import get_embedder
 
 logger = logging.getLogger("crossmind.hybrid_rag_kg")
@@ -15,12 +16,17 @@ class HybridRAGKG:
         self.knowledge_graph = KnowledgeGraph()
         self.vector_engine = get_qdrant_engine()
         self.embedder = get_embedder()
+        self.adapter = get_vector_adapter()
 
     def retrieve(self, query: str, user_role: str, allowed_domains: List[str], top_k: int = 5) -> Dict[str, Any]:
         start = time.time()
-        query_vector = self.embedder.embed_text(query)
+        query_vector = self.embedder.embed_text(
+            query,
+            dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM,
+        )
+        normalized_query = self.adapter.normalize(query_vector, force_dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM)
         dense_results = self.vector_engine.search_with_rbac(
-            query_vector=query_vector,
+            query_vector=normalized_query.get("flat_vector", query_vector),
             user_role=user_role,
             allowed_domains=allowed_domains,
             top_k=top_k,
@@ -29,8 +35,9 @@ class HybridRAGKG:
         dense_ms = round((time.time() - start) * 1000, 2)
         
         graph_start = time.time()
+        query_entities = self.knowledge_graph._terms({"title": query, "content": query, "tags": []})
         graph_context = self.knowledge_graph.graph_rag_context(
-            dense_results, allowed_domains
+            dense_results, query_entities
         )
         graph_ms = round((time.time() - graph_start) * 1000, 2)
         

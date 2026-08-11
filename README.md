@@ -4,26 +4,28 @@
 
 ## Phase 1: Ingestion
 
-**Technologies:** FastAPI, MinerU, Apache Tika, BGE-M3, Qdrant, Redis
+**Technologies:** FastAPI, MinerU, Apache Tika, BGE-M3, Qdrant, Redis, Universal Vector Adapter
 
-**Purpose:** Collects and processes documents, extracts text and structured content, generates dual-vector Matryoshka embeddings (compact 256-dim search + full 1024-dim rerank), stores them in the vector database, and uses caching for efficient data ingestion.
+**Purpose:** Collects and processes documents, extracts text and structured content, generates dual-vector Matryoshka embeddings (compact 256-dim search + full 1024-dim rerank) or any vector shape via the universal adapter, stores them in the vector database, and uses caching for efficient data ingestion.
 
 - FastAPI async endpoints for document upload (PDF, DOCX, Excel, Email)
 - MinerU for scientific PDF extraction (tables, formulas, images)
 - Apache Tika as fallback for office docs and emails
 - BGE-M3 INT8 or FP32 quantized with Matryoshka support (256-dim search vector + 1024-dim rerank vector)
+- Universal Vector Adapter normalizes any vector type (flat dense, multi-vector, 2D/3D tensors, sparse dicts) into Qdrant-compatible flat vectors with shape metadata for reconstruction
 - Qdrant with PQ compression for vector storage
 - Redis for hot-query caching (sub-2ms)
 - Domain classification on ingest
 
 ## Phase 2: Retrieval
 
-**Technologies:** BGE-M3, Qdrant, BM25, RRF, Cross-Encoder Reranking, RBAC, Redis, LightGBM/TinyBERT Classifier, Conditional Retrieval
+**Technologies:** BGE-M3, Qdrant, BM25, RRF, Cross-Encoder Reranking, Universal Vector Adapter, RBAC, Redis, LightGBM/TinyBERT Classifier, Conditional Retrieval
 
-**Purpose:** Performs hybrid semantic and keyword-based retrieval, reranks results using a lightweight cross-encoder (replacing ColBERT), applies role-based access control, uses semantic caching with cleanup, and employs a machine learning query classifier to conditionally optimize retrieval pathways.
+**Purpose:** Performs hybrid semantic and keyword-based retrieval, reranks results using a lightweight cross-encoder (replacing ColBERT), normalizes any incoming vector type through the universal adapter, applies role-based access control, uses semantic caching with cleanup, and employs a machine learning query classifier to conditionally optimize retrieval pathways.
 
 - LightGBM / TinyBERT Query Classifier (via TfidfVectorizer + GradientBoosting/MLP) categorizing query domains, types, and complexities
 - Conditional Retrieval Optimization bypassing heavy multi-agent / GraphRAG steps for low-complexity / factual queries to minimize latency
+- Universal Vector Adapter normalizes flat dense, multi-vector, 2D/3D tensors, and sparse dicts into Qdrant-compatible flat vectors with shape metadata
 - BGE-M3 dense vector search via Qdrant HNSW index (O(log N)) using 256-dim Matryoshka vectors
 - BM25 sparse keyword ranking
 - Reciprocal Rank Fusion (RRF) for hybrid result merging
@@ -71,8 +73,8 @@
 
 | Phase | Tech Stack | Memory | Latency |
 |:---|:---|:---|:---|
-| **1: Ingestion** | FastAPI + MinerU + Tika + BGE-M3 (Matryoshka) + Qdrant + Redis | 1.8GB | 10-15ms |
-| **2: Retrieval** | BGE-M3 (256-dim) + Qdrant + BM25 + RRF + Cross-Encoder Reranking + RBAC + Redis | 1.8GB | 10-15ms |
+| **1: Ingestion** | FastAPI + MinerU + Tika + BGE-M3 (Matryoshka) + Universal Vector Adapter + Qdrant + Redis | 1.8GB | 10-15ms |
+| **2: Retrieval** | BGE-M3 (256-dim) + Universal Vector Adapter + Qdrant + BM25 + RRF + Cross-Encoder Reranking + RBAC + Redis | 1.8GB | 10-15ms |
 | **3: Reasoning** | LiteLLM (low) / ZAYA-1B (medium) / ZAYA1-8B (high) + vLLM + Scallop + Semara + DeforestVIS + GraphRAG + WFA + Decision Tree + Redis | ~6GB | 1-2s |
 | **4: Application** | FastAPI + React/Streamlit + SSE + OpenTelemetry + Prometheus + Redis + DiskCache + DLDB + RBAC | 350MB | <1ms |
 | **TOTAL** | **All Phases** | **~8.5GB** | **~1-2s** |
@@ -112,11 +114,75 @@ Open http://localhost:8501, enter a query, click **Run Full Pipeline**. All 4 ph
 
 The architecture is domain-agnostic — works for energy, finance, materials, climate, psychology, and any scientific domain. The ZAYA1-8B agent handles any query generically with evidence-limited fallbacks when ontology entities are not found.
 
+## Graph Visualization
+
+CrossMind uses a **1D scatter layout** for knowledge graph visualization by default. This is intentional: node positions indicate **similarity ordering**, not spatial relationships.
+
+**1D Scatter vs Force-Directed Graph**
+
+| Layout | When to Use | What It Shows |
+|:---|:---|:---|
+| **1D Scatter** | Quick overview, large graphs | Nodes are ordered by retrieval score along a single axis. Edges are drawn as horizontal connectors. Best for 10–200 nodes. |
+| **Force-Directed** | Deep analysis, small graphs | Nodes repel each other, edges act as springs. Reveals clusters and bridges. Best for 5–50 nodes. |
+
+In the dashboard, use **"Show simplified view"** for large result sets and **"Show network view"** for focused graph exploration.
+
+## GraphRAG Hierarchy Assumptions
+
+The knowledge graph is built from **document metadata only** — no external ontology is required.
+
+- **Nodes**: `doc:<id>` documents and `entity:<term>` entities
+- **Edges**: `mentions` relationships between documents and entities
+- **Paths**: Multi-hop bridges via shared entities across documents
+- **Assumptions**:
+  - Tags and title/content text contain recognizable entity terms
+  - Shared entities imply meaningful cross-document relationships
+  - Cross-domain paths receive a novelty bonus
+- **What to expect**: With heterogeneous scientific literature, expect sparse graphs with occasional cross-domain bridges. Graph depth is limited to 2-hop paths for performance.
+
+## Matrix / Vector Shapes
+
+The Universal Vector Adapter handles these input shapes:
+
+| Shape | Example Input | Stored As | Notes |
+|:---|:---|:---|:---|
+| `(dim,)` flat | `[0.1, 0.2, ...]` | Flat list | Standard dense embedding |
+| `(n, dim)` multi-vector | `[[0.1, ...], [0.2, ...]]` | Flattened + shape metadata | Token-level embeddings; reshaped on retrieval |
+| `(H, W)` 2D tensor | `np.array((8, 8))` | Flattened + shape metadata | Image patches, spectrograms |
+| `(D, H, W)` 3D tensor | `np.array((4, 8, 8))` | Flattened + shape metadata | Volumetric data |
+| `Dict[int, float]` sparse | `{0: 1.0, 5: 2.0}` | Expanded dense + index metadata | TF-IDF, bag-of-words |
+
+**Important**: All vectors are normalized to unit length before storage. `force_dim` truncates or pads to the target dimension. Original shape is preserved in `payload.vector_meta` for reconstruction.
+
+## Routing Metrics
+
+The pipeline tracks query complexity → model selection → latency → quality scores for every query.
+
+| Metric | Description |
+|:---|:---|
+| `total_queries` | Number of queries processed |
+| `complexity_distribution` | Count of queries by complexity level |
+| `model_selection_distribution` | Count of queries routed to each model |
+| `avg_latency_ms_by_model` | Average latency per model |
+| `avg_quality_by_model` | Average confidence/quality score per model |
+| `overall_avg_latency_ms` | End-to-end average latency |
+| `overall_avg_quality` | End-to-end average quality score |
+
+Access metrics via `GET /api/routing/metrics` or in the dashboard Phase 3 panel.
+
 ## Running Tests
 
 ```bash
-python comprehensive_test.py
+python -m unittest tests.test_feature_optimizations -v
 ```
+
+Tests cover:
+- Reasoning router correctness
+- Evidence compression
+- Semantic query cache cleanup
+- Mixed vector shapes (flat, multi-vector, 2D/3D tensors, sparse dicts)
+- Graph hierarchy edge cases
+- Graph visualization scale (1, 5, 50, 500 nodes)
 
 ## Serving ZAYA1-8B Live (Optional)
 
