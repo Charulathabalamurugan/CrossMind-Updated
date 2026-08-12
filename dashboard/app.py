@@ -498,7 +498,7 @@ if run_clicked and query_input:
         st.json(result)
 
 else:
-    st.markdown("### 🚀 How It Works")
+    st.markdown("###  How It Works")
     st.markdown("""
 1. **Enter your scientific query** in the text area above
 2. **Click "Run Full Pipeline"** — this triggers all 4 phases sequentially

@@ -4,7 +4,12 @@ import logging
 import socket
 from typing import List, Dict, Any, Generator
 from config import settings
-from reasoning.conflict_detector import ConflictDetector
+try:
+    from reasoning.conflict_detector import ConflictDetector
+except Exception:
+    class ConflictDetector:
+        def detect(self, *args, **kwargs):
+            return {"conflicts": [], "status": "disabled"}
 
 try:
     import httpx
