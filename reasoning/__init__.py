@@ -7,6 +7,9 @@ __all__ = [
     "get_multi_agent_orchestrator",
     "get_hybrid_rag_kg",
     "get_dual_memory",
+    "get_unified_router",
+    "get_quality_gate",
+    "get_cost_controller",
     "get_z3_validator",
     "get_experimental_blueprint_generator",
     "get_evidence_attributor",
@@ -64,6 +67,21 @@ def get_hybrid_rag_kg():
 def get_dual_memory():
     from reasoning.dual_memory import get_dual_memory as _get_dual_memory
     return _get_dual_memory()
+
+
+def get_unified_router():
+    from reasoning.strategy_layer import get_unified_router as _get_unified_router
+    return _get_unified_router()
+
+
+def get_quality_gate():
+    from reasoning.strategy_layer import get_quality_gate as _get_quality_gate
+    return _get_quality_gate()
+
+
+def get_cost_controller():
+    from reasoning.strategy_layer import get_cost_controller as _get_cost_controller
+    return _get_cost_controller()
 
 
 def get_z3_validator():

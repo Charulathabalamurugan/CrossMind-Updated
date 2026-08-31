@@ -28,6 +28,7 @@ from reasoning.wfa_fast_path import get_wfa_engine
 from reasoning.semara_reasoner import SemaraReasoner
 from reasoning.query_classifier import get_query_classifier
 from reasoning.routing_metrics import get_routing_metrics
+from reasoning.strategy_layer import get_unified_router, get_quality_gate, get_cost_controller
 
 logger = logging.getLogger("crossmind.neuro_symbolic")
 
@@ -76,6 +77,9 @@ class NeuroSymbolicPipeline:
         self.wfa_fast_path = get_wfa_engine()
         self.decision_tree = DecisionTreeClassifier()
         self.query_classifier = get_query_classifier()
+        self.unified_router = get_unified_router()
+        self.quality_gate = get_quality_gate()
+        self.cost_controller = get_cost_controller()
         self.scallop = ScallopReasoner() if settings.SCALLOP_ENABLED else None
         self.deforest_vis = DeforestVIS(port=settings.DEFORESTVIS_PORT) if settings.DEFORESTVIS_ENABLED else None
         # DiskCache for persistent query caching
@@ -283,10 +287,16 @@ class NeuroSymbolicPipeline:
         memory_context_str = self.memory_service.get_relevant_context(query)
         filter_metadata["memory_context"] = memory_context_str
 
-        # Query Classifier & Routing Pathway Decision
+        # Unified routing layer: classify once, select the path, budget, and execution mode
         classification = self.query_classifier.classify(query)
+        route = self.unified_router.route(query, {"user_role": user_role})
         filter_metadata["query_classification"] = classification
-        is_simple_query = classification["complexity"] == "low" or classification["query_type"] == "factual"
+        filter_metadata["unified_route"] = route
+        filter_metadata["execution_mode"] = route["execution_mode"]
+        filter_metadata["reasoning_model"] = route["model"]
+        is_simple_query = route["execution_mode"] == "fast"
+        cost_record = self.cost_controller.track_query(query, route["execution_mode"], route["budget_tokens"], route["budget_cost_estimate"])
+        filter_metadata["cost_record"] = cost_record
 
         # Step 2: Retrieval (Hybrid RAG-KG or standard) with Conditional Retrieval Optimization
         if settings.MULTI_AGENT_ENABLED and not is_simple_query:
@@ -380,6 +390,17 @@ class NeuroSymbolicPipeline:
             risk_summary,
             graph_seed_context,
         )
+
+        gate_result = self.quality_gate.evaluate(
+            result["confidence_calibration"]["calibrated_confidence"],
+            validation_result.get("validation_score", 0.0),
+            len(retrieved_evidence),
+            result["cross_domain_scoring"].get("overall_score", 0.0),
+        )
+        result["quality_gate"] = gate_result
+        result["budget_control"] = self.cost_controller.enforce_budget(route["budget_cost_estimate"], max_cost=0.25)
+        filter_metadata["quality_gate"] = gate_result
+        filter_metadata["budget_control"] = result["budget_control"]
 
         # Record feedback for risk-controlled learning
         if settings.RISK_FEEDBACK_ENABLED:

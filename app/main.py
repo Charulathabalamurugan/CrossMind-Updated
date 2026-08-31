@@ -24,8 +24,10 @@ from ingestion.queue_manager import get_queue_manager
 from reasoning.routing_metrics import get_routing_metrics
 from reasoning.feedback_collector import get_feedback_collector
 from reasoning.rule_engine import get_rule_engine
+from reasoning.strategy_layer import get_unified_router, get_quality_gate, get_cost_controller
 from reasoning.rule_updater import get_rule_updater
 from reasoning.retrainer import get_model_retrainer
+from reasoning.benchmark_collector import get_benchmark_collector
 from app.observability import configure_logging, record_request, prometheus_payload, QUERIES # Uses OpenTelemetry tracing
 
 configure_logging()
@@ -290,6 +292,18 @@ async def get_metrics():
 async def get_routing_metrics_endpoint():
     metrics = get_routing_metrics()
     return metrics.get_summary(limit=200)
+
+@app.get("/api/agent/status")
+async def get_agent_status():
+    pipeline = get_neuro_symbolic_pipeline()
+    orchestrator = pipeline.multi_agent
+    return {
+        "status": "ok",
+        "active_agents": orchestrator.get_stats(),
+        "strategy": get_unified_router().route("status check", {"user_role": "researcher"}),
+        "quality_gate": get_quality_gate().default_thresholds,
+        "cost_controller": get_cost_controller().get_summary(),
+    }
 
 @app.get("/api/graph/browser")
 async def get_graph_browser_data():
