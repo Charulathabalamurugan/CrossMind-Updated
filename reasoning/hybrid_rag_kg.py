@@ -1,6 +1,7 @@
 import time
 import logging
 from typing import List, Dict, Any, Optional
+from config import settings
 from reasoning.knowledge_graph import KnowledgeGraph, DiscoveryScorer
 from vector_store.qdrant_engine import get_qdrant_engine
 from vector_store.vector_adapter import get_vector_adapter

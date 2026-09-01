@@ -108,12 +108,12 @@ class SymbolicPreFilter:
         filter_metadata = {
             "query": query,
             "language": language,
-            "detected_domains": detected_domains or ["neuroscience", "nanotechnology"],
+            "detected_domains": detected_domains or ["general"],
             "extracted_entities": list(set(extracted_entities)),
             "execution_time_ms": round(execution_time_ms, 2),
             "search_constraints": {
                 "min_year": 2020,
-                "domain_filter": detected_domains or ["neuroscience", "nanotechnology"]
+                "domain_filter": detected_domains or ["general"]
             }
         }
         logger.info(f"Symbolic Pre-Filter completed in {filter_metadata['execution_time_ms']}ms. Domains: {detected_domains}, Entities: {extracted_entities}")

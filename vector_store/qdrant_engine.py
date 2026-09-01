@@ -213,7 +213,7 @@ class QdrantVectorEngine:
 
             if self.client and QDRANT_CLIENT_INSTALLED:
                 qdrant_point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, str(point_id)))
-                vector_payload = {"vector": flat_vector}
+                vector_payload = flat_vector
                 sparse_vector = None
                 if settings.SPARSE_VECTOR_ENABLED and vector_meta.get("type") == "sparse":
                     sparse_vector = rest_models.SparseVector(
@@ -229,14 +229,14 @@ class QdrantVectorEngine:
                             for i in range(shape[0])
                         ]
                 if multivector is not None:
-                    vector_payload = {"multivector": multivector}
-                elif sparse_vector is not None:
-                    vector_payload = {"sparse_vector": sparse_vector}
+                    vector_payload = multivector
+                if sparse_vector is not None:
+                    vector_payload = {"dense": flat_vector, "sparse": sparse_vector}
 
                 qdrant_points.append(
                     rest_models.PointStruct(
                         id=qdrant_point_id,
-                        vector=vector_payload if not sparse_vector else {"dense": flat_vector, "sparse": sparse_vector},
+                        vector=vector_payload,
                         payload=payload
                     )
                 )
