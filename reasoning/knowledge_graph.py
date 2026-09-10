@@ -3,6 +3,9 @@ from collections import defaultdict
 from itertools import combinations
 from typing import Any, Dict, Iterable, List
 
+from config import settings
+from reasoning.graphrag_traversal import GraphTraverser, TraversalConfig
+
 STRUCTURAL_ENTITIES = (
     "alzheimer's", "aβ42", "tau", "apoe4", "microglia", "neuroinflammation",
     "blood-brain barrier", "bbb", "bace1", "nanomaterials", "lipid nanoparticles",
@@ -45,63 +48,14 @@ class KnowledgeGraph:
 
     def graph_rag_context(self, evidence: List[Dict[str, Any]], query_entities: List[str]) -> Dict[str, Any]:
         """Return multi-hop paths and a compact typed subgraph for retrieved evidence."""
-        evidence_ids = {str(item.get("id")) for item in evidence}
-        terms_by_doc: Dict[str, set] = {}
-        for item in evidence:
-            payload = item.get("payload", {})
-            terms_by_doc[str(item.get("id"))] = {term.lower() for term in self._terms(payload)}
-
-        # Query entities anchor the graph, then tags shared by different documents
-        # form one-hop bridges. Documents from different domains sharing a bridge are
-        # useful cross-domain / multi-hop evidence chains.
-        anchors = {str(entity).lower() for entity in query_entities}
-        shared = defaultdict(list)
-        for doc_id, terms in terms_by_doc.items():
-            for term in terms:
-                shared[term].append(doc_id)
-
-        nodes, edges, paths = [], [], []
-        for item in evidence:
-            doc_id, payload = str(item.get("id")), item.get("payload", {})
-            nodes.append({"id": "doc:" + doc_id, "label": payload.get("title", doc_id), "type": "document", "domain": payload.get("domain", "general")})
-            for term in sorted(terms_by_doc.get(doc_id, set())):
-                entity_id = "entity:" + term
-                nodes.append({"id": entity_id, "label": term, "type": "entity"})
-                edges.append({"source": "doc:" + doc_id, "target": entity_id, "relation": "mentions"})
-
-        evidence_scores = {str(item.get("id")): max(0.0, min(1.0, float(item.get("score", 0.0)))) for item in evidence}
-        for term, doc_ids in shared.items():
-            if len(doc_ids) < 2:
-                continue
-            for left, right in combinations(sorted(set(doc_ids)), 2):
-                left_domain = next((e.get("payload", {}).get("domain") for e in evidence if str(e.get("id")) == left), "general")
-                right_domain = next((e.get("payload", {}).get("domain") for e in evidence if str(e.get("id")) == right), "general")
-                relevance = (evidence_scores.get(left, 0.0) + evidence_scores.get(right, 0.0)) / 2
-                # A bridge that appears in fewer documents is more discriminative;
-                # cross-domain paths receive a modest novelty bonus.
-                novelty = min(1.0, 1.0 / len(doc_ids) + (0.25 if left_domain != right_domain else 0.0))
-                score = 100 * (0.65 * relevance + 0.35 * novelty)
-                paths.append({
-                    "path": ["doc:" + left, "entity:" + term, "doc:" + right],
-                    "bridge_entity": term,
-                    "cross_domain": left_domain != right_domain,
-                    "relevance_score": round(relevance * 100, 1),
-                    "novelty_score": round(novelty * 100, 1),
-                    "path_score": round(score, 1),
-                })
-
-        unique_nodes = {node["id"]: node for node in nodes}
-        cross_domain_paths = [path for path in paths if path["cross_domain"]]
-        return {
-            "strategy": "vector_seed_then_graph_expansion",
-            "seed_document_ids": sorted(evidence_ids),
-            "query_anchors": sorted(anchors),
-            "nodes": list(unique_nodes.values()),
-            "edges": edges,
-            "multi_hop_paths": sorted(paths, key=lambda path: path["path_score"], reverse=True)[:10],
-            "cross_domain_path_count": len(cross_domain_paths),
-            "path_scoring_method": "65% seed-document relevance, 35% bridge novelty (with cross-domain bonus)",
-        }
+        config = TraversalConfig(
+            max_depth=settings.GRAPH_RAG_DEPTH,
+            early_stop_threshold=settings.GRAPH_RAG_EARLY_STOP_THRESHOLD,
+            max_paths=settings.GRAPH_RAG_MAX_PATHS,
+            min_evidence=settings.GRAPH_RAG_MIN_EVIDENCE,
+        )
+        traverser = GraphTraverser(config=config, knowledge_graph=self)
+        return traverser.traverse(evidence, query_entities)
 
 
 class DiscoveryScorer:

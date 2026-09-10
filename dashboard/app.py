@@ -2,17 +2,116 @@ import streamlit as st
 import requests
 import json
 import re
+import os
+import logging
+from typing import Optional, List
+
 import plotly.express as px
 import plotly.graph_objects as go
 import time
 import math
-import os
 
 st.set_page_config(
     page_title="CrossMind | Neuro-Symbolic Discovery Engine",
     page_icon="🧠",
     layout="wide"
 )
+
+# ========== Configuration with safe fallback ==========
+def _load_dashboard_config():
+    try:
+        from config import get_settings
+        s = get_settings()
+        return (
+            s.DASHBOARD_AUTH_ENABLED,
+            s.DASHBOARD_API_KEY.get_secret_value() if s.DASHBOARD_API_KEY else "",
+            [r.strip() for r in s.DASHBOARD_ALLOWED_ROLES.split(",") if r.strip()],
+        )
+    except Exception:
+        return False, "", ["admin", "researcher", "viewer"]
+
+DASHBOARD_AUTH_ENABLED, DASHBOARD_API_KEY, DASHBOARD_ALLOWED_ROLES = _load_dashboard_config()
+
+
+# ========== Authentication helpers ==========
+def _init_auth_state():
+    if "dashboard_authenticated" not in st.session_state:
+        st.session_state.dashboard_authenticated = False
+    if "dashboard_auth_role" not in st.session_state:
+        st.session_state.dashboard_auth_role = None
+    if "dashboard_auth_error" not in st.session_state:
+        st.session_state.dashboard_auth_error = None
+
+
+def _is_authorized() -> bool:
+    if not DASHBOARD_AUTH_ENABLED:
+        return True
+    if not DASHBOARD_API_KEY:
+        return True
+    return st.session_state.get("dashboard_authenticated", False)
+
+
+def _attempt_auth(api_key: str, role: str) -> Optional[str]:
+    if not DASHBOARD_AUTH_ENABLED or not DASHBOARD_API_KEY:
+        st.session_state.dashboard_authenticated = True
+        st.session_state.dashboard_auth_role = role
+        st.session_state.dashboard_auth_error = None
+        return None
+    if not api_key:
+        return "API key is required."
+    if api_key != DASHBOARD_API_KEY:
+        return "Invalid API key."
+    if role not in DASHBOARD_ALLOWED_ROLES:
+        return f"Role '{role}' is not allowed. Allowed: {', '.join(DASHBOARD_ALLOWED_ROLES)}"
+    st.session_state.dashboard_authenticated = True
+    st.session_state.dashboard_auth_role = role
+    st.session_state.dashboard_auth_error = None
+    return None
+
+
+def _logout():
+    st.session_state.dashboard_authenticated = False
+    st.session_state.dashboard_auth_role = None
+    st.session_state.dashboard_auth_error = None
+
+
+def _render_auth_gate():
+    st.markdown("""
+    <style>
+        .auth-container { max-width: 420px; margin: 8vh auto; padding: 32px; border-radius: 12px; border: 1px solid #E5E7EB; background: #FFFFFF; }
+        .auth-title { font-size: 1.4rem; font-weight: 700; color: #1E3A8A; margin-bottom: 4px; }
+        .auth-sub { font-size: 0.9rem; color: #6B7280; margin-bottom: 20px; }
+        .security-badge { background-color: #ECFDF5; color: #065F46; padding: 2px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; border: 1px solid #6EE7B7; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    with st.container():
+        st.markdown('<div class="auth-container">', unsafe_allow_html=True)
+        st.markdown('<div class="auth-title">🔐 CrossMind Dashboard</div>', unsafe_allow_html=True)
+        st.markdown('<div class="auth-sub">Enter your dashboard API key to continue.</div>', unsafe_allow_html=True)
+
+        if DASHBOARD_API_KEY:
+            st.caption(f"Auth enabled · Allowed roles: {', '.join(DASHBOARD_ALLOWED_ROLES)}")
+        else:
+            st.caption("Auth enabled but no key configured — contact your administrator.")
+
+        with st.form("dashboard_auth_form", clear_on_submit=False):
+            entered_key = st.text_input("Dashboard API Key", type="password", autocomplete="off")
+            role = st.selectbox("Role", DASHBOARD_ALLOWED_ROLES, index=0)
+            submitted = st.form_submit_button("Authenticate", type="primary", use_container_width=True)
+            if submitted:
+                err = _attempt_auth(entered_key, role)
+                if err:
+                    st.session_state.dashboard_auth_error = err
+                    st.error(err)
+                else:
+                    st.rerun()
+
+        if st.session_state.get("dashboard_auth_error"):
+            st.error(st.session_state.dashboard_auth_error)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
 
 def sanitize_text(text: str, max_length: int = 5000) -> str:
     if not text:
@@ -42,11 +141,18 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ========== Auth gate ==========
+_init_auth_state()
+
+if not _is_authorized():
+    _render_auth_gate()
+    st.stop()
+
 # ========== Sidebar ==========
 st.sidebar.markdown(f'<span class="security-badge">🔒 RBAC Enabled</span>', unsafe_allow_html=True)
 API_BASE = st.sidebar.text_input("Backend API Base URL", value=os.getenv("API_BASE", "http://localhost:8000"))
 API_KEY = st.sidebar.text_input("API Key (optional)", value="", type="password")
-user_role = st.sidebar.selectbox("User Role (RBAC)", ["researcher", "admin", "public"], index=0)
+user_role = st.sidebar.selectbox("User Role (RBAC)", DASHBOARD_ALLOWED_ROLES, index=0)
 st.sidebar.markdown("### Confidence Policy")
 proceed_threshold = st.sidebar.slider("Proceed threshold", min_value=0.50, max_value=0.95, value=0.75, step=0.05)
 investigate_threshold = st.sidebar.slider("Investigate threshold", min_value=0.10, max_value=proceed_threshold, value=min(0.50, proceed_threshold), step=0.05)
@@ -60,6 +166,11 @@ st.sidebar.markdown("""
 - **Quantization:** Q4_K_M (~5.5 GB)
 - **License:** Apache 2.0
 """)
+if DASHBOARD_AUTH_ENABLED:
+    st.sidebar.markdown("---")
+    if st.sidebar.button("Logout", use_container_width=True):
+        _logout()
+        st.rerun()
 
 # ========== Title ==========
 st.markdown('<div class="main-title">🧠 CrossMind: Neuro-Symbolic Scientific Discovery Engine</div>', unsafe_allow_html=True)

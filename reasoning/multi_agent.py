@@ -4,7 +4,18 @@ import threading
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any, Deque, Dict, List, Optional, Union
+
+from reasoning.agent_registry import (
+    Agent,
+    AgentCapability,
+    AgentDescriptor,
+    AgentRegistry,
+    AgentState,
+    LifecycleHooks,
+    RegisteredAgent,
+    get_agent_registry,
+)
 
 logger = logging.getLogger("crossmind.multi_agent")
 
@@ -96,7 +107,7 @@ class AgentMessageBus:
             }
 
 
-class SpecialistAgent:
+class SpecialistAgent(Agent):
     """Concrete specialist agent wrapper for a domain-specific reasoning task."""
 
     DOMAIN_KEYWORDS = {
@@ -122,6 +133,39 @@ class SpecialistAgent:
         )
         self.tools = ["evidence_filter", "domain_ranker", "confidence_check"]
         self.task_count = 0
+        self._started = False
+
+    def get_descriptor(self) -> AgentDescriptor:
+        return AgentDescriptor(
+            agent_id=self.agent_id,
+            name=self.name,
+            domain=self.domain,
+            capabilities=[
+                AgentCapability.REASONING,
+                AgentCapability.EVIDENCE_FILTER,
+                AgentCapability.DOMAIN_RANKER,
+                AgentCapability.CONFIDENCE_CHECK,
+            ],
+            version="1.0.0",
+            description=f"Specialist agent for {self.domain} domain",
+            tags=[self.domain, "specialist"],
+        )
+
+    def start(self) -> None:
+        self._started = True
+        logger.debug("Specialist agent %s started", self.agent_id)
+
+    def stop(self) -> None:
+        self._started = False
+        logger.debug("Specialist agent %s stopped", self.agent_id)
+
+    def health_check(self) -> Dict[str, Any]:
+        return {
+            "status": "healthy" if self._started else "stopped",
+            "domain": self.domain,
+            "task_count": self.task_count,
+            "timestamp": time.time(),
+        }
 
     def _relevance_score(self, query: str, evidence: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         lower_query = query.lower()
@@ -176,11 +220,33 @@ class SpecialistAgent:
         return f"{self.domain.title()} analysis: {query}. Key supporting observations: {' '.join(snippets)}"
 
 
-class CriticAgent:
+class CriticAgent(Agent):
     """Checks whether specialist outputs are supported by retrieved evidence and flags potential hallucinations."""
 
     def __init__(self):
         self.name = "critic_agent"
+        self.agent_id = "critic_agent"
+        self._started = False
+
+    def get_descriptor(self) -> AgentDescriptor:
+        return AgentDescriptor(
+            agent_id=self.agent_id,
+            name="CriticAgent",
+            domain="critique",
+            capabilities=[AgentCapability.CRITIQUE, AgentCapability.REASONING],
+            version="1.0.0",
+            description="Critic agent for evidence verification",
+            tags=["critic", "verification"],
+        )
+
+    def start(self) -> None:
+        self._started = True
+
+    def stop(self) -> None:
+        self._started = False
+
+    def health_check(self) -> Dict[str, Any]:
+        return {"status": "healthy" if self._started else "stopped", "timestamp": time.time()}
 
     def evaluate(self, claim: str, evidence: List[Dict[str, Any]]) -> Dict[str, Any]:
         claim_norm = re.sub(r"[^a-z0-9\s]", " ", claim.lower())
@@ -210,12 +276,37 @@ class CriticAgent:
             "flags": flags,
         }
 
+    def process(self, query: str, evidence: List[Dict[str, Any]], filter_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return self.evaluate(query, evidence)
 
-class SynthesizerAgent:
+
+class SynthesizerAgent(Agent):
     """Combines specialist reports and critic guidance into the final answer."""
 
     def __init__(self):
         self.name = "synthesizer_agent"
+        self.agent_id = "synthesizer_agent"
+        self._started = False
+
+    def get_descriptor(self) -> AgentDescriptor:
+        return AgentDescriptor(
+            agent_id=self.agent_id,
+            name="SynthesizerAgent",
+            domain="synthesis",
+            capabilities=[AgentCapability.SYNTHESIS, AgentCapability.REASONING],
+            version="1.0.0",
+            description="Synthesizer agent for combining specialist outputs",
+            tags=["synthesizer", "aggregation"],
+        )
+
+    def start(self) -> None:
+        self._started = True
+
+    def stop(self) -> None:
+        self._started = False
+
+    def health_check(self) -> Dict[str, Any]:
+        return {"status": "healthy" if self._started else "stopped", "timestamp": time.time()}
 
     def synthesize(self, query: str, agent_reports: List[Dict[str, Any]], critic_report: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         critic_report = critic_report or {"flags": [], "passed": True}
@@ -236,6 +327,9 @@ class SynthesizerAgent:
             "confidence": round(0.85 if critic_report.get("passed", True) else 0.6, 2),
             "critic_flags": critic_report.get("flags", []),
         }
+
+    def process(self, query: str, evidence: List[Dict[str, Any]], filter_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return self.synthesize(query, evidence, filter_metadata)
 
 
 class StrategyEngine:
@@ -269,8 +363,8 @@ class StrategyEngine:
 
 
 class MultiAgentOrchestrator:
-    def __init__(self):
-        self._agents: Dict[str, SpecialistAgent] = {}
+    def __init__(self, registry: Optional[AgentRegistry] = None):
+        self._registry = registry or get_agent_registry()
         self._lock = threading.Lock()
         self._total_tasks = 0
         self._memory = AgentMemory()
@@ -290,22 +384,59 @@ class MultiAgentOrchestrator:
             "logistics",
             "education",
         ]
+        self._initialize_default_agents()
+
+    def _initialize_default_agents(self):
         for domain in self._default_domains:
             self.get_or_create_agent(domain)
+        self._registry.register(self._critic)
+        self._registry.register(self._synthesizer)
+        self._registry.start_all()
 
-    def register_agent(self, domain: str) -> SpecialistAgent:
+    def register_agent(
+        self,
+        domain: str,
+        agent_instance: Optional[Agent] = None,
+        hooks: Optional[LifecycleHooks] = None,
+    ) -> RegisteredAgent:
+        """Register a new specialist agent for a domain.
+
+        Args:
+            domain: The domain name (e.g., "energy", "finance")
+            agent_instance: Optional custom agent instance. If None, creates a SpecialistAgent.
+            hooks: Optional lifecycle hooks for the agent.
+
+        Returns:
+            The RegisteredAgent wrapper.
+        """
         domain_key = domain.lower()
-        agent = SpecialistAgent(domain_key, f"{domain_key}_agent")
-        with self._lock:
-            self._agents[domain_key] = agent
-        return agent
+        if agent_instance is None:
+            agent_instance = SpecialistAgent(domain_key, f"{domain_key}_agent")
+
+        registered = self._registry.register(agent_instance, hooks=hooks, domain=domain_key)
+        self._registry.start_agent(registered.descriptor.agent_id)
+        return registered
+
+    def unregister_agent(self, domain: str) -> bool:
+        """Unregister a specialist agent by domain."""
+        domain_key = domain.lower()
+        agents = self._registry.list_by_domain(domain_key)
+        for registered in agents:
+            self._registry.stop_agent(registered.descriptor.agent_id)
+            self._registry.unregister(registered.descriptor.agent_id)
+        return True
 
     def get_or_create_agent(self, domain: str) -> SpecialistAgent:
         domain_key = domain.lower()
         with self._lock:
-            if domain_key not in self._agents:
-                self._agents[domain_key] = SpecialistAgent(domain_key, f"{domain_key}_agent")
-            return self._agents[domain_key]
+            existing = self._registry.list_by_domain(domain_key)
+            for registered in existing:
+                if isinstance(registered.instance, SpecialistAgent):
+                    return registered.instance
+
+            agent = SpecialistAgent(domain_key, f"{domain_key}_agent")
+            self.register_agent(domain_key, agent)
+            return agent
 
     def _select_agents(self, query: str, metadata: Dict[str, Any]) -> List[SpecialistAgent]:
         strategy = self._strategy.plan(query)
@@ -360,7 +491,7 @@ class MultiAgentOrchestrator:
                     domain = futures[future]
                     try:
                         results[domain] = future.result()
-                    except Exception as exc:  # pragma: no cover - defensive path
+                    except Exception as exc:
                         logger.exception("Agent execution failed for %s", domain)
                         self._bus.mark_failed(domain, str(exc))
                         results[domain] = {"agent_id": domain, "domain": domain, "status": "failed", "error": str(exc)}
@@ -378,6 +509,12 @@ class MultiAgentOrchestrator:
         with self._lock:
             self._total_tasks += len(results)
 
+        agent_health = {}
+        for agent in agents:
+            registered = self._registry.get(agent.agent_id)
+            if registered:
+                agent_health[agent.agent_id] = self._registry.health_check(agent.agent_id)
+
         response = {
             "status": "completed",
             "strategy": strategy,
@@ -389,6 +526,7 @@ class MultiAgentOrchestrator:
             "message_bus": self._bus.get_stats(),
             "execution_ms": round((time.time() - start) * 1000, 2),
             "inference_budget_tokens": strategy["budget_tokens"],
+            "agent_health": agent_health,
         }
         return response
 
@@ -397,12 +535,26 @@ class MultiAgentOrchestrator:
 
     def get_stats(self) -> Dict[str, Any]:
         with self._lock:
+            registry_stats = self._registry.get_stats()
             return {
-                "active_agents": len(self._agents),
-                "domains": list(self._agents.keys()),
+                "active_agents": registry_stats["total_agents"],
+                "domains": registry_stats["domains"],
                 "total_tasks": self._total_tasks,
                 "message_bus": self._bus.get_stats(),
+                "registry": registry_stats,
             }
+
+    def get_agent_health(self, agent_id: Optional[str] = None) -> Dict[str, Any]:
+        """Get health status for a specific agent or all agents."""
+        return self._registry.health_check(agent_id)
+
+    def start(self) -> Dict[str, bool]:
+        """Start all registered agents."""
+        return self._registry.start_all()
+
+    def stop(self) -> Dict[str, bool]:
+        """Stop all registered agents."""
+        return self._registry.stop_all()
 
 
 _orchestrator_instance: Optional[MultiAgentOrchestrator] = None
@@ -413,3 +565,10 @@ def get_multi_agent_orchestrator() -> MultiAgentOrchestrator:
     if _orchestrator_instance is None:
         _orchestrator_instance = MultiAgentOrchestrator()
     return _orchestrator_instance
+
+
+def reset_multi_agent_orchestrator() -> None:
+    global _orchestrator_instance
+    if _orchestrator_instance is not None:
+        _orchestrator_instance.stop()
+    _orchestrator_instance = None
