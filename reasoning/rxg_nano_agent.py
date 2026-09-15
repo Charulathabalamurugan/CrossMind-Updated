@@ -143,14 +143,16 @@ class ZAYA1_8BAgent:
                     hyp_words.append(w)
             hyp_words.append("\n")
 
+        structured_result_sent = False
         for idx, word in enumerate(hyp_words):
             is_last = (idx == len(hyp_words) - 1)
             if word == "\n":
                 delta_payload = {"stage": "hypothesis_synthesis", "delta": "\n"}
             else:
                 delta_payload = {"stage": "hypothesis_synthesis", "delta": word + " "}
-            if is_last:
+            if not structured_result_sent:
                 delta_payload["structured_result"] = result
+                structured_result_sent = True
             yield delta_payload
 
     def _build_prompt(self, query: str, evidence: List[Dict[str, Any]], filter_meta: Dict[str, Any], graph_context: Dict[str, Any] = None) -> str:

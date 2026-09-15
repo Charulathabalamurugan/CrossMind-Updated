@@ -1,4 +1,5 @@
 import pytest
+from config import settings
 from unittest.mock import Mock, patch, AsyncMock, MagicMock
 from typing import Dict, Any, List
 
@@ -270,7 +271,7 @@ class TestServiceFailureScenarios:
             mock_driver = Mock()
             mock_session = Mock()
             mock_session.run.side_effect = Exception("Session failed")
-            mock_driver.session.return_value.__enter__.return_value = mock_session
+            mock_driver.session.return_value.__enter__ = Mock(return_value=mock_session)
             mock_neo4j.driver.return_value = mock_driver
             
             graph = Neo4jGraph()

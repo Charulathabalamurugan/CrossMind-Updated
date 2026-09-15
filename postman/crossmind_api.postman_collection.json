@@ -1,0 +1,352 @@
+{
+  "info": {
+    "_postman_id": "crossmind-api-collection",
+    "name": "CrossMind API",
+    "description": "Neuro-Symbolic Discovery Engine API collection with versioning, auth, and core endpoints.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{api_key}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "x_api_version",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "System",
+      "item": [
+        {
+          "name": "Root",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/",
+              "protocol": "http",
+              "host": ["{{base_url}}"],
+              "path": ["", ""]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/healthz",
+              "protocol": "http",
+              "host": ["{{base_url}}"],
+              "path": ["healthz"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/metrics",
+              "protocol": "http",
+              "host": ["{{base_url}}"],
+              "path": ["metrics"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "protocol": "http",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/refresh",
+              "protocol": "http",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "refresh"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/users",
+              "protocol": "http",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "users"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Query (v1)",
+      "item": [
+        {
+          "name": "Query",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Version",
+                "value": "{{x_api_version}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{api_key}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"How do battery storage and market volatility interact?\",\n  \"user_role\": \"researcher\",\n  \"confidence_proceed_threshold\": 0.75,\n  \"confidence_investigate_threshold\": 0.50,\n  \"session_id\": \"default\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/api/query",
+              "protocol": "http",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "api", "query"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Query (legacy /api)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{api_key}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"How do battery storage and market volatility interact?\",\n  \"user_role\": \"researcher\",\n  \"confidence_proceed_threshold\": 0.75,\n  \"confidence_investigate_threshold\": 0.50,\n  \"session_id\": \"default\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/query",
+              "protocol": "http",
+              "host": ["{{base_url}}"],
+              "path": ["api", "query"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Ingestion (v1)",
+      "item": [
+        {
+          "name": "Ingest Documents",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Version",
+                "value": "{{x_api_version}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{api_key}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documents\": [\n    {\n      \"title\": \"Energy Storage in Battery Systems\",\n      \"content\": \"Lithium-ion batteries are crucial for renewable energy storage.\",\n      \"domain\": \"energy\",\n      \"tags\": [\"battery\", \"electrolyte\", \"renewable\"],\n      \"allowed_roles\": [\"public\", \"researcher\"]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/api/ingest",
+              "protocol": "http",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "api", "ingest"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Ingest Documents (legacy /api)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{api_key}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documents\": [\n    {\n      \"title\": \"Energy Storage in Battery Systems\",\n      \"content\": \"Lithium-ion batteries are crucial for renewable energy storage.\",\n      \"domain\": \"energy\",\n      \"tags\": [\"battery\", \"electrolyte\", \"renewable\"],\n      \"allowed_roles\": [\"public\", \"researcher\"]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ingest",
+              "protocol": "http",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ingest"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Streaming (v1)",
+      "item": [
+        {
+          "name": "Stream Reasoning",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Version",
+                "value": "{{x_api_version}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/api/stream_reasoning?query=How+do+battery+storage+and+market+volatility+interact%3F&user_role=researcher",
+              "protocol": "http",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "api", "stream_reasoning"],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "How do battery storage and market volatility interact?"
+                },
+                {
+                  "key": "user_role",
+                  "value": "researcher"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Stream Reasoning (legacy /api)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/stream_reasoning?query=How+do+battery+storage+and+market+volatility+interact%3F&user_role=researcher",
+              "protocol": "http",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stream_reasoning"],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "How do battery storage and market volatility interact?"
+                },
+                {
+                  "key": "user_role",
+                  "value": "researcher"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

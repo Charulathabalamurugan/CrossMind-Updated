@@ -186,9 +186,20 @@ class QdrantVectorEngine:
 
         for item in records:
             point_id = item.get("id") or str(uuid.uuid4())
-            raw_vector = item["vector"]
+            raw_vector = item.get("vector")
             payload = dict(item.get("payload", {}))
             payload.setdefault("id", point_id)
+
+            if raw_vector is None:
+                title = str(payload.get("title", ""))
+                content = str(payload.get("content", ""))
+                tags = payload.get("tags", []) or []
+                text = " ".join(part for part in (title, content, " ".join(map(str, tags))) if part)
+                try:
+                    raw_vector = get_embedder().embed_text(text, dim=self.dim)
+                except Exception as exc:
+                    logger.warning(f"Failed to derive vector for '{point_id}' ({exc}). Using a zero vector.")
+                    raw_vector = [0.0] * self.dim
 
             # Normalize any vector type to flat dense + metadata
             adapter_out = self.adapter.normalize(raw_vector, force_dim=self.dim)

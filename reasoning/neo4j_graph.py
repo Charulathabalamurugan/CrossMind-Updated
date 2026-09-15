@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 from typing import Any, Dict, Iterable, List, Optional
 
 from config import settings
@@ -22,19 +23,41 @@ class Neo4jGraph:
         self._connect()
 
     def _connect(self):
-        if GraphDatabase is None:
+        if not getattr(settings, "NEO4J_ENABLED", False) or GraphDatabase is None:
             return
         try:
             self.driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password))
-            with self.driver.session(database="neo4j") as session:
+            with self._session() as session:
                 session.run("RETURN 1")
         except Exception:
             self.driver = None
 
+    @contextmanager
+    def _session(self):
+        session = self.driver.session(database="neo4j")
+        try:
+            enter = session.__enter__
+            exit_ = session.__exit__
+        except AttributeError:
+            enter = exit_ = None
+
+        if enter is not None and exit_ is not None:
+            with session as managed_session:
+                yield managed_session
+            return
+
+        try:
+            yield session
+        finally:
+            close = getattr(session, "close", None)
+            if close is not None:
+                close()
+
     def index_documents(self, documents: Iterable[Dict[str, Any]]) -> None:
+        documents = list(documents)
         if self.driver is not None:
             try:
-                with self.driver.session(database="neo4j") as session:
+                with self._session() as session:
                     for document in documents:
                         doc_id = str(document.get("id") or document.get("title") or "doc")
                         title = document.get("title", "Untitled")
@@ -57,7 +80,7 @@ class Neo4jGraph:
         paths: List[Dict[str, Any]] = []
         if self.driver is not None:
             try:
-                with self.driver.session(database="neo4j") as session:
+                with self._session() as session:
                     rows = session.run(
                         "MATCH (d:Document)-[:MENTIONS]->(e:Entity) WHERE d.id IN $ids RETURN d.title AS title, collect(e.name) AS entities LIMIT 20",
                         ids=[str(item.get("id")) for item in evidence],

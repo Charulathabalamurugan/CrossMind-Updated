@@ -15,15 +15,19 @@ The current implementation includes the following verified runtime paths:
 - Deployment config and environment settings: [config.py](config.py)
 - Docker service setup: [docker-compose.yml](docker-compose.yml)
 - Dashboard UI: [dashboard/app.py](dashboard/app.py)
+- Kubernetes manifests: [kubernetes/](kubernetes/) and [kubernetes/base/](kubernetes/base/)
+- Production Helm charts: [helm/crossmind/](helm/crossmind/)
+- Database migrations: [migrations/](migrations/)
+- Validation and security scripts: [scripts/](scripts/)
 
 ## Runtime structure
 
 The active runtime is organized into a clearer production layout:
 
 - app: API entry points and presentation-facing application logic
-- core: orchestration and reasoning core factories
-- infra: storage, cache, and retrieval infrastructure adapters
-- services: higher-level service entry points and orchestration helpers
+- core: orchestration and reasoning core factories (structural package, implementation in reasoning/)
+- infra: storage, cache, and retrieval infrastructure adapters (structural package, implementations in vector_store/ and ingestion/)
+- services: higher-level service entry points and orchestration helpers (structural package, implementations in ingestion/ and reasoning/)
 
 This structure is represented by the packages:
 
@@ -96,7 +100,13 @@ python -m streamlit run dashboard/app.py --server.port 8501
 docker compose up -d
 ```
 
-The default API endpoints are exposed through the FastAPI app in [app/main.py](app/main.py), including query execution, streaming, health, metrics, and agent status.
+5. Optional: deploy to Kubernetes via Helm
+
+```bash
+helm install crossmind helm/crossmind
+```
+
+The FastAPI app in [app/main.py](app/main.py) exports the following endpoints: `/api/query`, `/api/ingest`, `/api/stream_reasoning`, `/v1/api/*` aliases, `/healthz`, `/metrics`, `/auth/login`, `/auth/refresh`, `/auth/users`, and `/`. All endpoints support Bearer-token authentication (except health and metrics). The API includes versioning headers, request validation via Pydantic schemas, Server-Sent Events streaming, Prometheus metrics, and OpenAPI documentation at `/docs`.
 
 ## Important runtime notes
 
@@ -107,10 +117,19 @@ The default API endpoints are exposed through the FastAPI app in [app/main.py](a
 
 ## Validation status
 
-The project has been validated in the current workspace with the real test suite. The verified suite currently passes with 28 passing tests.
+The project has been validated in the current workspace with the real test suite. The verified suite currently passes with 147 passing tests, no failures, no errors.
 
 ```bash
-python -m unittest discover tests
+python -m pytest tests
+```
+
+Packaging and validation commands:
+
+```bash
+python -c "import tomli; tomli.load(open('pyproject.toml','rb'))"
+python scripts/validate_yaml.py .github/workflows monitoring kubernetes helm
+python scripts/security_check.py --skip-pip-audit
+python -m compileall app ingestion reasoning vector_store dashboard scripts migrations
 ```
 
 ## License

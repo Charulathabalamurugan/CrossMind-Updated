@@ -336,17 +336,42 @@ class NeuroSymbolicPipeline:
             retrieved_evidence, filter_metadata.get("extracted_entities", [])
         )
         routing_mode = self._route_reasoning_model(classification["complexity"])
-        if settings.LITELLM_ENABLED and routing_mode == "lite_llm":
-            agent_result = self._lite_llm_reasoning(query, retrieved_evidence, filter_metadata, graph_seed_context)
-            filter_metadata["reasoning_model"] = settings.LITELLM_MODEL_NAME
-        elif settings.ZAYA1B_ENABLED and routing_mode == "zaya1b":
-            agent_result = self._lite_llm_reasoning(query, retrieved_evidence, filter_metadata, graph_seed_context)
-            filter_metadata["reasoning_model"] = settings.ZAYA1B_MODEL_NAME
-        else:
-            agent_result = self.agent.reason_and_synthesize(
-                query, retrieved_evidence, filter_metadata, graph_seed_context
-            )
-            filter_metadata["reasoning_model"] = self.agent.model_name
+        try:
+            if settings.LITELLM_ENABLED and (
+                routing_mode == "lite_llm"
+                or not settings.ZAYA1_8B_REASONING_ENABLED
+            ):
+                agent_result = self._lite_llm_reasoning(
+                    query, retrieved_evidence, filter_metadata, graph_seed_context
+                )
+                filter_metadata["reasoning_model"] = settings.LITELLM_MODEL_NAME
+            elif settings.ZAYA1B_ENABLED and routing_mode == "zaya1b":
+                agent_result = self._lite_llm_reasoning(
+                    query, retrieved_evidence, filter_metadata, graph_seed_context
+                )
+                filter_metadata["reasoning_model"] = settings.ZAYA1B_MODEL_NAME
+            else:
+                agent_result = self.agent.reason_and_synthesize(
+                    query, retrieved_evidence, filter_metadata, graph_seed_context
+                )
+                filter_metadata["reasoning_model"] = self.agent.model_name
+        except Exception as exc:
+            logger.warning("Reasoning agent failed; using fallback: %s", exc)
+            if settings.LITELLM_ENABLED:
+                agent_result = self._lite_llm_reasoning(
+                    query, retrieved_evidence, filter_metadata, graph_seed_context
+                )
+                filter_metadata["reasoning_model"] = settings.LITELLM_MODEL_NAME
+            else:
+                agent_result = {
+                    "model": "deterministic-fallback",
+                    "think_block": "Reasoning agent unavailable; generated bounded fallback.",
+                    "tool_calls": [],
+                    "output_text": "Reasoning service unavailable.",
+                    "hypothesis": "Reasoning service unavailable.",
+                    "cited_evidence_ids": [ev.get("id") for ev in retrieved_evidence[:3]],
+                    "confidence_score": 0.0,
+                }
         agent_time_s = round(time.time() - start_reasoning, 2)
 
         # Step 3c: Symbolic Post-Validation

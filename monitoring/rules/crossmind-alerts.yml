@@ -1,0 +1,69 @@
+groups:
+  - name: crossmind.rules
+    rules:
+      - alert: CrossmindAPIHighErrorRate
+        expr: |
+          (
+            sum(rate(crossmind_http_requests_total{status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(crossmind_http_requests_total[5m])), 0.001)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: CrossMind API error rate is high
+          description: More than 5% of API requests have returned a 5xx response for 5 minutes.
+
+      - alert: CrossmindAPIHighLatency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, path) (rate(crossmind_http_request_duration_seconds_bucket[5m]))
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: CrossMind API p95 latency is high
+          description: API p95 latency has exceeded 2 seconds for 5 minutes.
+
+      - alert: CrossmindPipelinePhaseLatency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, phase) (rate(crossmind_pipeline_phase_duration_seconds_bucket[5m]))
+          ) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: CrossMind pipeline phase latency is high
+          description: A pipeline phase p95 latency has exceeded 10 seconds for 5 minutes.
+
+      - alert: CrossmindQueueBacklog
+        expr: crossmind_queue_depth > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: CrossMind work queue is backlogged
+          description: A work queue has remained above 100 pending items for 5 minutes.
+
+      - alert: CrossmindValidationScoreLow
+        expr: crossmind_validation_score < 0.70
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: CrossMind validation score is low
+          description: The latest validation score has remained below 0.70 for 10 minutes.
+
+      - alert: CrossmindAPITargetDown
+        expr: up{job="crossmind-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: CrossMind API Prometheus target is down
+          description: Prometheus has been unable to scrape the CrossMind API for 2 minutes.

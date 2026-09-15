@@ -389,8 +389,11 @@ class MultiAgentOrchestrator:
     def _initialize_default_agents(self):
         for domain in self._default_domains:
             self.get_or_create_agent(domain)
-        self._registry.register(self._critic)
-        self._registry.register(self._synthesizer)
+
+        if self._registry.get("critic_agent") is None:
+            self._registry.register(self._critic)
+        if self._registry.get("synthesizer_agent") is None:
+            self._registry.register(self._synthesizer)
         self._registry.start_all()
 
     def register_agent(

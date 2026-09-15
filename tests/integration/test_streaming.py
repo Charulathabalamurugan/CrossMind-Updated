@@ -263,17 +263,16 @@ class TestStreamingDisconnectAndBackpressure:
                                     ])
                                     mock_pipeline_class.return_value = mock_pipeline
                                     
-                                    response = test_client.get(
-                                        "/api/stream_reasoning",
-                                        params={"query": "test", "user_role": "researcher"},
-                                        headers=auth_headers,
-                                        stream=True
-                                    )
-                                    
-                                    assert response.status_code == 200
-                                    
-                                    for chunk in response.iter_text():
-                                        pass
+                                response = test_client.get(
+                                    "/api/stream_reasoning",
+                                    params={"query": "test", "user_role": "researcher"},
+                                    headers=auth_headers,
+                                )
+
+                                assert response.status_code == 200
+
+                                for chunk in response.iter_text():
+                                    pass
 
     def test_streaming_backpressure_with_slow_consumer(
         self, mock_embedder, mock_agent, sample_evidence

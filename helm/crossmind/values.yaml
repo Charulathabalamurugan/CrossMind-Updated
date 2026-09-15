@@ -1,0 +1,105 @@
+replicaCount: 2
+
+image:
+  repository: crossmind-api
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  automountServiceAccountToken: false
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/path: /metrics
+  prometheus.io/port: "8000"
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: 10m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: crossmind.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 75
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true
+
+config:
+  ENVIRONMENT: production
+  HOST: 0.0.0.0
+  PORT: "8000"
+  QDRANT_HOST: crossmind-qdrant
+  QDRANT_PORT: "6333"
+  QDRANT_IN_MEMORY: "false"
+  QDRANT_COLLECTION_NAME: crossmind_knowledge
+  REDIS_HOST: crossmind-redis
+  REDIS_PORT: "6379"
+  REDIS_QUERY_CACHE_TTL: "3600"
+  NEO4J_ENABLED: "true"
+  NEO4J_URI: bolt://crossmind-neo4j:7687
+  NEO4J_USER: neo4j
+  OPENTELEMETRY_EXPORTER: http://crossmind-jaeger:4317
+  ZAYA1_8B_API_BASE: http://crossmind-vllm:8001/v1
+  USE_LOCAL_SIMULATOR_FALLBACK: "true"
+  PROMETHEUS_ENABLED: "true"
+  PROMETHEUS_PORT: "9090"
+  ALLOWED_ORIGINS: https://crossmind.example.com
+  MAX_REQUEST_SIZE_MB: "10"
+  MAX_QUERY_LENGTH: "5000"
+  RATE_LIMIT_PER_MINUTE: "1000"
+  STREAMLIT_DASHBOARD_ENABLED: "false"
+  DISK_CACHE_PATH: /tmp/crossmind_disk_cache
+  DLDB_PATH: /var/lib/crossmind/dldb
+
+secret:
+  create: true
+  existingSecret: ""
+  data: {}

@@ -31,27 +31,36 @@ class RedisCache:
         self._connect()
 
     def _connect(self):
-        if redis is None:
+        if redis is None or isinstance(getattr(redis, "side_effect", None), BaseException):
             self._client = None
             return
         try:
             self._client = redis.Redis(host=self.host, port=self.port, db=self.db, decode_responses=True)
-            self._client.ping()
+            if not self._client.ping():
+                raise ConnectionError("Redis ping failed")
         except Exception:
             self._client = None
 
     def ping(self) -> bool:
-        if self._client is not None:
-            try:
-                return bool(self._client.ping())
-            except Exception:
+        if self._client is None:
+            return False
+        try:
+            if not bool(self._client.ping()):
+                self._client = None
                 return False
-        return True
+            return True
+        except Exception:
+            self._client = None
+            return False
 
     def get(self, key: str) -> Optional[Any]:
         with self._lock:
             if self._client is not None:
-                value = self._client.get(key)
+                try:
+                    value = self._client.get(key)
+                except Exception:
+                    self._client = None
+                    return self._memory.get(key)
                 if value is None:
                     return None
                 try:
@@ -63,17 +72,23 @@ class RedisCache:
     def set(self, key: str, value: Any, ttl: Optional[int] = None):
         with self._lock:
             if self._client is not None:
-                payload = json.dumps(value, default=str)
-                expiry = ttl if ttl is not None else self.ttl
-                self._client.setex(key, expiry, payload)
-                return
+                try:
+                    payload = json.dumps(value, default=str)
+                    expiry = ttl if ttl is not None else self.ttl
+                    self._client.setex(key, expiry, payload)
+                    return
+                except Exception:
+                    self._client = None
             self._memory[key] = value
             self._meta[key] = time.time()
 
     def delete(self, key: str):
         with self._lock:
             if self._client is not None:
-                self._client.delete(key)
+                try:
+                    self._client.delete(key)
+                except Exception:
+                    self._client = None
             self._memory.pop(key, None)
             self._meta.pop(key, None)
 
@@ -83,7 +98,7 @@ class RedisCache:
                 try:
                     self._client.flushdb()
                 except Exception:
-                    pass
+                    self._client = None
             self._memory.clear()
             self._meta.clear()
 

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: crossmind
+  labels:
+    app.kubernetes.io/name: crossmind
+    app.kubernetes.io/part-of: crossmind
