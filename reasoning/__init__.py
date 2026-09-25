@@ -36,6 +36,31 @@ __all__ = [
     "get_tree_interpreter",
     "get_prometheus_monitor",
     "get_model_registry",
+    "get_continuous_learning_engine",
+    "get_evaluation_engine",
+    "get_provenance_tracker",
+    "get_version_registry",
+    "get_confidence_calibrator",
+    "record_provenance_event",
+    "start_provenance_chain",
+    "end_provenance_chain",
+    "calibrate_confidence",
+    "get_component_version",
+    "is_version_deprecated",
+    "check_version_compatibility",
+    "ProvenanceEventType",
+    "ProvenanceEvent",
+    "ProvenanceChain",
+    "ProvenanceTracker",
+    "VersionComponent",
+    "VersionInfo",
+    "CompatibilityMatrix",
+    "VersionRegistry",
+    "CalibrationMethod",
+    "Decision",
+    "CalibrationConfig",
+    "CalibrationResult",
+    "ConfidenceCalibrator",
 ]
 
 
@@ -212,3 +237,85 @@ def get_prometheus_monitor():
 def get_model_registry():
     from reasoning.mlflow_registry import get_model_registry as _get_model_registry
     return _get_model_registry()
+
+
+def get_continuous_learning_engine():
+    from reasoning.continuous_learning import get_continuous_learning_engine as _get_continuous_learning_engine
+    return _get_continuous_learning_engine()
+
+
+def get_evaluation_engine():
+    from reasoning.evaluation_enhancements import get_evaluation_engine as _get_evaluation_engine
+    return _get_evaluation_engine()
+
+
+def get_provenance_tracker():
+    from reasoning.provenance import get_provenance_tracker as _get_provenance_tracker
+    return _get_provenance_tracker()
+
+
+def get_version_registry():
+    from reasoning.versioning import get_version_registry as _get_version_registry
+    return _get_version_registry()
+
+
+def get_confidence_calibrator():
+    from reasoning.calibration import get_confidence_calibrator as _get_confidence_calibrator
+    return _get_confidence_calibrator()
+
+
+def record_provenance_event(*args, **kwargs):
+    from reasoning.provenance import record_provenance_event as _record_provenance_event
+    return _record_provenance_event(*args, **kwargs)
+
+
+def start_provenance_chain(**kwargs):
+    from reasoning.provenance import start_provenance_chain as _start_provenance_chain
+    return _start_provenance_chain(**kwargs)
+
+
+def end_provenance_chain():
+    from reasoning.provenance import end_provenance_chain as _end_provenance_chain
+    return _end_provenance_chain()
+
+
+def calibrate_confidence(*args, **kwargs):
+    from reasoning.calibration import calibrate_confidence as _calibrate_confidence
+    return _calibrate_confidence(*args, **kwargs)
+
+
+def get_component_version(component):
+    from reasoning.versioning import get_component_version as _get_component_version
+    return _get_component_version(component)
+
+
+def is_version_deprecated(component, version):
+    from reasoning.versioning import is_version_deprecated as _is_version_deprecated
+    return _is_version_deprecated(component, version)
+
+
+def check_version_compatibility(component, from_version, to_version):
+    from reasoning.versioning import check_version_compatibility as _check_version_compatibility
+    return _check_version_compatibility(component, from_version, to_version)
+
+
+# Re-export key classes for convenience
+from reasoning.provenance import (
+    ProvenanceEventType,
+    ProvenanceEvent,
+    ProvenanceChain,
+    ProvenanceTracker,
+)
+from reasoning.versioning import (
+    VersionComponent,
+    VersionInfo,
+    CompatibilityMatrix,
+    VersionRegistry,
+)
+from reasoning.calibration import (
+    CalibrationMethod,
+    Decision,
+    CalibrationConfig,
+    CalibrationResult,
+    ConfidenceCalibrator,
+)

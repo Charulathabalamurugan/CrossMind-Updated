@@ -31,6 +31,27 @@ class Settings(BaseSettings):
     MAX_QUERY_LENGTH: int = Field(default=5000, ge=1, le=100000)
     MAX_DOC_CONTENT_LENGTH: int = Field(default=50000, ge=1, le=10000000)
     RATE_LIMIT_PER_MINUTE: int = Field(default=1000, ge=1, le=1000000)
+    MULTI_TENANCY_ENABLED: bool = False
+    DEFAULT_TENANT_ID: str = Field(default="default", min_length=1, max_length=128)
+    TENANT_HEADER: str = Field(default="X-Tenant-ID", min_length=1, max_length=128)
+    TENANT_DEFAULT_BUDGET: float = Field(default=1.0, ge=0.0)
+    TENANT_DEFAULT_QUOTA_PER_MINUTE: int = Field(default=1000, ge=1, le=1000000)
+    DATA_RESIDENCY: str = Field(default="global", min_length=1, max_length=128)
+    COMPLIANCE_POLICIES: str = Field(default="gdpr", min_length=1, max_length=256)
+    CONSENT_REQUIRED: bool = False
+    HUMAN_REVIEW_ENABLED: bool = False
+    HIGH_STAKES_DOMAINS: str = Field(default="healthcare,finance,energy", min_length=1, max_length=256)
+    PROVENANCE_ENABLED: bool = True
+    REPRODUCIBILITY_ENABLED: bool = True
+    ADVERSARIAL_PROTECTION_ENABLED: bool = True
+    CONTINUOUS_LEARNING_ENABLED: bool = True
+    EVALUATION_ENABLED: bool = True
+    CROSS_DOMAIN_REASONING_ENABLED: bool = True
+    COST_PREDICTION_ENABLED: bool = True
+    DISTRIBUTED_RATE_LIMIT_ENABLED: bool = False
+    TENANT_CACHE_PARTITION_ENABLED: bool = True
+    TENANT_DLTDB_PARTITION_ENABLED: bool = True
+    INCREMENTAL_KNOWLEDGE_ENABLED: bool = True
 
     ZAYA1_8B_MODEL_NAME: str = Field(default="ZAYA1-8B", min_length=1)
     ZAYA1_8B_API_BASE: str = Field(default="http://localhost:8000/v1", min_length=1)
