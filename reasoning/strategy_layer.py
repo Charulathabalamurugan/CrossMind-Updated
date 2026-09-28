@@ -17,9 +17,32 @@ class UnifiedRouter:
 
     def route(self, query: str, filter_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         metadata = filter_metadata or {}
+        anomaly_result = metadata.get("query_anomaly")
+        if not isinstance(anomaly_result, dict):
+            from anomaly_detection import get_anomaly_detector_registry
+
+            anomaly_result = get_anomaly_detector_registry().detect_sync(
+                "retrieval_query",
+                query,
+                {"session_id": metadata.get("session_id")},
+            ).to_dict()
         cache_key = (query.strip(), metadata.get("user_role", "researcher"))
         if cache_key in self._route_cache:
-            return dict(self._route_cache[cache_key])
+            route = dict(self._route_cache[cache_key])
+            route["anomaly_detection"] = anomaly_result
+            if anomaly_result.get("label") == "anomaly":
+                route.update(
+                    execution_mode="deep",
+                    retrieval_strategy="hybrid_rag_kg",
+                    requires_multi_agent=True,
+                    requires_graph_rag=True,
+                    agent_count=max(3, route.get("agent_count", 1)),
+                    budget_tokens=max(6000, route.get("budget_tokens", 0)),
+                    model=settings.ZAYA1_8B_MODEL_NAME,
+                    anomaly_forced_deep_path=True,
+                )
+                route["budget_cost_estimate"] = round(route["budget_tokens"] * 0.0004, 4)
+            return route
 
         classification = self.classifier.classify(query)
         complexity = str(classification.get("complexity", "medium")).lower()
@@ -61,8 +84,22 @@ class UnifiedRouter:
             "budget_cost_estimate": round(budget_tokens * 0.0004, 4),
             "selected_agents": [domain] if domain != "general" else ["general"],
             "timestamp": time.time(),
+            "anomaly_detection": anomaly_result,
         }
-        self._route_cache[cache_key] = route
+        if anomaly_result.get("label") == "anomaly":
+            route.update(
+                execution_mode="deep",
+                retrieval_strategy="hybrid_rag_kg",
+                requires_multi_agent=True,
+                requires_graph_rag=True,
+                agent_count=max(3, route["agent_count"]),
+                budget_tokens=max(6000, route["budget_tokens"]),
+                model=settings.ZAYA1_8B_MODEL_NAME,
+                anomaly_forced_deep_path=True,
+            )
+            route["budget_cost_estimate"] = round(route["budget_tokens"] * 0.0004, 4)
+        else:
+            self._route_cache[cache_key] = route
         return dict(route)
 
     def expand_retrieval_query(self, query: str, entities: Optional[List[str]] = None) -> str:

@@ -82,6 +82,7 @@ def reset_singletons():
     import reasoning.user_profiles as up
     import reasoning.auto_discover as ad
     import reasoning.simulation_client as sim
+    import anomaly_detection.registry as anomaly_registry
 
     nsp._neuro_symbolic_pipeline = None
     ip._pipeline_instance = None
@@ -122,6 +123,7 @@ def reset_singletons():
     up._user_profile_service = None
     ad._auto_discover_engine = None
     sim._simulation_client = None
+    anomaly_registry.reset_anomaly_detector_registry()
 
     yield
 

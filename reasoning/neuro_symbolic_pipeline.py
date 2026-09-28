@@ -29,6 +29,7 @@ from reasoning.semara_reasoner import SemaraReasoner
 from reasoning.query_classifier import get_query_classifier
 from reasoning.routing_metrics import get_routing_metrics
 from reasoning.strategy_layer import get_unified_router, get_quality_gate, get_cost_controller
+from anomaly_detection import get_anomaly_detector_registry
 
 logger = logging.getLogger("crossmind.neuro_symbolic")
 
@@ -63,6 +64,7 @@ class NeuroSymbolicPipeline:
         self.adapter = get_vector_adapter()
         self.routing_metrics = get_routing_metrics()
         self._cache = {}
+        self.anomaly_detectors = get_anomaly_detector_registry()
 
         # Advanced engines
         self.multi_agent = get_multi_agent_orchestrator()
@@ -110,6 +112,44 @@ class NeuroSymbolicPipeline:
                 retrieved_evidence, filter_metadata.get("extracted_entities", [])
             )
         discovery_score = DiscoveryScorer.score(retrieved_evidence, graph_context)
+        discovery_anomaly = self.anomaly_detectors.detect_sync(
+            "scientific_discovery",
+            {
+                "overall_score": discovery_score.get("overall_score", 0.0),
+                "evidence_count": len(retrieved_evidence),
+                "domain_count": len(filter_metadata.get("detected_domains", [])),
+                "novelty_score": discovery_score.get("novelty_score", 0.0),
+                "feasibility_score": discovery_score.get("feasibility_score", 0.0),
+                "evidence_score": discovery_score.get("evidence_score", 0.0),
+            },
+            {"session_id": filter_metadata.get("session_id")},
+        )
+        if discovery_anomaly.flagged:
+            from reasoning.dldb import get_dldb
+
+            get_dldb().record_event(
+                "candidate_discovery",
+                {
+                    "session_id": filter_metadata.get("session_id"),
+                    "query_hash": discovery_anomaly.input_hash,
+                    "anomaly_score": discovery_anomaly.score,
+                    "discovery_score": discovery_score,
+                    "evidence_ids": [item.get("id") for item in retrieved_evidence],
+                },
+            )
+        else:
+            self.anomaly_detectors.record_normal_sample(
+                "scientific_discovery",
+                {
+                    "overall_score": discovery_score.get("overall_score", 0.0),
+                    "evidence_count": len(retrieved_evidence),
+                    "domain_count": len(filter_metadata.get("detected_domains", [])),
+                    "novelty_score": discovery_score.get("novelty_score", 0.0),
+                    "feasibility_score": discovery_score.get("feasibility_score", 0.0),
+                    "evidence_score": discovery_score.get("evidence_score", 0.0),
+                },
+            )
+        reasoning_anomaly = filter_metadata.get("reasoning_anomaly")
         confidence_calibration = ConfidenceCalibrator.calibrate(
             agent_result.get("confidence_score", 0.0),
             discovery_score,
@@ -170,6 +210,8 @@ class NeuroSymbolicPipeline:
             "retrieved_evidence": retrieved_evidence,
             "graph_rag": graph_context,
             "cross_domain_scoring": discovery_score,
+            "discovery_anomaly": discovery_anomaly.to_dict(),
+            "reasoning_anomaly": reasoning_anomaly,
             "evidence_traceability": build_evidence_traces(query, retrieved_evidence),
             "evidence_attribution": evidence_attribution,
             "confidence_calibration": confidence_calibration,
@@ -262,13 +304,18 @@ class NeuroSymbolicPipeline:
         confidence_thresholds: Dict[str, float] = None,
         session_id: str = "default",
     ) -> Dict[str, Any]:
+        query_anomaly = self.anomaly_detectors.detect_sync(
+            "retrieval_query",
+            query,
+            {"session_id": session_id},
+        )
         cache_key = (
             query,
             user_role,
             session_id,
             tuple(sorted((confidence_thresholds or {}).items())),
         )
-        if cache_key in self._cache:
+        if cache_key in self._cache and not query_anomaly.flagged:
             logger.info(f"Query cache hit: {query} for role {user_role}")
             return dict(self._cache[cache_key]["result"])
 
@@ -282,6 +329,9 @@ class NeuroSymbolicPipeline:
         # Step 3a: Symbolic Pre-Filter
         filter_metadata = self.pre_filter.process(query)
         filter_metadata["session_id"] = session_id
+        filter_metadata["query_anomaly"] = query_anomaly.to_dict()
+        if query_anomaly.flagged:
+            filter_metadata["routing_flags"] = ["anomalous_query", "force_deep_path", "audit"]
         if memory_context:
             filter_metadata["dual_memory_context"] = memory_context
         memory_context_str = self.memory_service.get_relevant_context(query)
@@ -289,11 +339,20 @@ class NeuroSymbolicPipeline:
 
         # Unified routing layer: classify once, select the path, budget, and execution mode
         classification = self.query_classifier.classify(query)
-        route = self.unified_router.route(query, {"user_role": user_role})
+        route = self.unified_router.route(
+            query,
+            {
+                "user_role": user_role,
+                "session_id": session_id,
+                "query_anomaly": query_anomaly.to_dict(),
+            },
+        )
         filter_metadata["query_classification"] = classification
         filter_metadata["unified_route"] = route
         filter_metadata["execution_mode"] = route["execution_mode"]
         filter_metadata["reasoning_model"] = route["model"]
+        if route.get("anomaly_forced_deep_path"):
+            classification["complexity"] = "high"
         is_simple_query = route["execution_mode"] == "fast"
         cost_record = self.cost_controller.track_query(query, route["execution_mode"], route["budget_tokens"], route["budget_cost_estimate"])
         filter_metadata["cost_record"] = cost_record
@@ -373,6 +432,29 @@ class NeuroSymbolicPipeline:
                     "confidence_score": 0.0,
                 }
         agent_time_s = round(time.time() - start_reasoning, 2)
+
+        reasoning_anomaly = self.anomaly_detectors.detect_sync(
+            "reasoning_output",
+            agent_result,
+            {"query_hash": query_anomaly.input_hash},
+        )
+        filter_metadata["reasoning_anomaly"] = reasoning_anomaly.to_dict()
+        if reasoning_anomaly.flagged:
+            filter_metadata["routing_flags"] = list(
+                dict.fromkeys(filter_metadata.get("routing_flags", []) + ["reasoning_anomaly", "debate_review"])
+            )
+            filter_metadata["debate_review"] = self.multi_agent.debate_review(
+                str(agent_result.get("output_text", "")),
+                retrieved_evidence,
+            )
+            agent_result["anomaly_review"] = filter_metadata["debate_review"]
+            agent_result["output_text"] = (
+                str(agent_result.get("output_text", ""))
+                + "\n\nAnomaly review required: the reasoning deviated from the known-good "
+                "output profile. Treat conclusions as provisional pending evidence review."
+            )
+        else:
+            self.anomaly_detectors.record_normal_sample("reasoning_output", agent_result)
 
         # Step 3c: Symbolic Post-Validation
         validation_result = self.post_validator.validate(
@@ -520,7 +602,9 @@ class NeuroSymbolicPipeline:
             },
         ]
 
-        self._cache[cache_key] = {"result": result, "events": events_recorded}
+        if not query_anomaly.flagged:
+            self.anomaly_detectors.record_normal_sample("retrieval_query", query)
+            self._cache[cache_key] = {"result": result, "events": events_recorded}
 
         routing_mode = self._route_reasoning_model(classification["complexity"])
         selected_model = filter_metadata.get("reasoning_model", "zaya1_8b")
@@ -539,8 +623,13 @@ class NeuroSymbolicPipeline:
     def stream_query(
         self, query: str, user_role: str = "researcher", session_id: str = "default"
     ) -> Generator[Dict[str, Any], None, None]:
+        query_anomaly = self.anomaly_detectors.detect_sync(
+            "retrieval_query",
+            query,
+            {"session_id": session_id},
+        )
         cache_key = (query, user_role, session_id)
-        if cache_key in self._cache:
+        if cache_key in self._cache and not query_anomaly.flagged:
             logger.info(f"Stream cache hit: {query} for role {user_role}")
             for event in self._cache[cache_key]["events"]:
                 yield event
@@ -550,31 +639,54 @@ class NeuroSymbolicPipeline:
 
         filter_metadata = self.pre_filter.process(query)
         filter_metadata["session_id"] = session_id
+        filter_metadata["query_anomaly"] = query_anomaly.to_dict()
+        if query_anomaly.flagged:
+            filter_metadata["routing_flags"] = ["anomalous_query", "force_deep_path", "audit"]
         memory_context_str = self.memory_service.get_relevant_context(query)
         filter_metadata["memory_context"] = memory_context_str
 
         # Query Classifier & Routing Pathway Decision
         classification = self.query_classifier.classify(query)
+        route = self.unified_router.route(
+            query,
+            {
+                "user_role": user_role,
+                "session_id": session_id,
+                "query_anomaly": query_anomaly.to_dict(),
+            },
+        )
+        if route.get("anomaly_forced_deep_path"):
+            classification["complexity"] = "high"
         filter_metadata["query_classification"] = classification
-        is_simple_query = classification["complexity"] == "low" or classification["query_type"] == "factual"
-        filter_metadata["retrieval_strategy"] = "optimized_simple_vector" if is_simple_query else "standard_vector"
+        filter_metadata["unified_route"] = route
+        is_simple_query = route["execution_mode"] == "fast"
+        filter_metadata["retrieval_strategy"] = route["retrieval_strategy"]
 
         evt1 = {"event": "step_3a_pre_filter", "data": filter_metadata}
         events_recorded.append(evt1)
         yield evt1
 
-        query_vector = self.embedder.embed_text(
-            query,
-            dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM,
-        )
-        normalized_query = self.adapter.normalize(query_vector, force_dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM)
-        retrieved_evidence = self.vector_engine.search_with_rbac(
-            query_vector=normalized_query.get("flat_vector", query_vector),
-            user_role=user_role,
-            allowed_domains=filter_metadata["detected_domains"],
-            top_k=5,
-            query_text=query,
-        )
+        if settings.MULTI_AGENT_ENABLED and not is_simple_query:
+            hybrid_result = self.hybrid_rag.retrieve(
+                query=query,
+                user_role=user_role,
+                allowed_domains=filter_metadata["detected_domains"],
+                top_k=5,
+            )
+            retrieved_evidence = hybrid_result.get("fused_results", [])
+        else:
+            query_vector = self.embedder.embed_text(
+                query,
+                dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM,
+            )
+            normalized_query = self.adapter.normalize(query_vector, force_dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM)
+            retrieved_evidence = self.vector_engine.search_with_rbac(
+                query_vector=normalized_query.get("flat_vector", query_vector),
+                user_role=user_role,
+                allowed_domains=filter_metadata["detected_domains"],
+                top_k=5,
+                query_text=query,
+            )
         evt2 = {
             "event": "step_2_vector_retrieval",
             "data": {
@@ -606,6 +718,26 @@ class NeuroSymbolicPipeline:
             agent_result = self.agent.reason_and_synthesize(
                 query, retrieved_evidence, filter_metadata, graph_seed_context
             )
+
+        reasoning_anomaly = self.anomaly_detectors.detect_sync(
+            "reasoning_output",
+            agent_result,
+            {"query_hash": query_anomaly.input_hash},
+        )
+        filter_metadata["reasoning_anomaly"] = reasoning_anomaly.to_dict()
+        if reasoning_anomaly.flagged:
+            filter_metadata["routing_flags"] = list(
+                dict.fromkeys(
+                    filter_metadata.get("routing_flags", [])
+                    + ["reasoning_anomaly", "debate_review"]
+                )
+            )
+            filter_metadata["debate_review"] = self.multi_agent.debate_review(
+                str(agent_result.get("output_text", "")),
+                retrieved_evidence,
+            )
+        else:
+            self.anomaly_detectors.record_normal_sample("reasoning_output", agent_result)
 
         validation_result = self.post_validator.validate(
             agent_result, retrieved_evidence
@@ -669,10 +801,12 @@ class NeuroSymbolicPipeline:
         events_recorded.append(evt5)
         yield evt5
 
-        self._cache[cache_key] = {
-            "result": processed_res,
-            "events": events_recorded,
-        }
+        if not query_anomaly.flagged:
+            self.anomaly_detectors.record_normal_sample("retrieval_query", query)
+            self._cache[cache_key] = {
+                "result": processed_res,
+                "events": events_recorded,
+            }
 
 
 _neuro_symbolic_pipeline = None

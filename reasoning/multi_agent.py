@@ -6,6 +6,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Deque, Dict, List, Optional, Union
 
+from anomaly_detection import get_anomaly_detector_registry
 from reasoning.agent_registry import (
     Agent,
     AgentCapability,
@@ -276,6 +277,16 @@ class CriticAgent(Agent):
             "flags": flags,
         }
 
+    def debate_review(self, claim: str, evidence: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Run an explicit critic pass when anomaly detection flags agent reasoning."""
+        review = self.evaluate(claim, evidence)
+        review["review_type"] = "anomaly_triggered_debate"
+        review["challenge_prompt"] = (
+            "Re-check the flagged reasoning against the retrieved evidence; identify unsupported "
+            "claims, contradictions, and uncertainty before synthesis."
+        )
+        return review
+
     def process(self, query: str, evidence: List[Dict[str, Any]], filter_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         return self.evaluate(query, evidence)
 
@@ -469,6 +480,9 @@ class MultiAgentOrchestrator:
         )
         return result
 
+    def debate_review(self, claim: str, evidence: List[Dict[str, Any]]) -> Dict[str, Any]:
+        return self._critic.debate_review(claim, evidence)
+
     def orchestrate(self, query: str, evidence: List[Dict[str, Any]], filter_metadata: Dict[str, Any], max_workers: int = 4) -> Dict[str, Any]:
         start = time.time()
         strategy = self._strategy.plan(query)
@@ -499,13 +513,36 @@ class MultiAgentOrchestrator:
                         self._bus.mark_failed(domain, str(exc))
                         results[domain] = {"agent_id": domain, "domain": domain, "status": "failed", "error": str(exc)}
 
+        completed_reports = [report for report in results.values() if report.get("status") == "completed"]
+        anomaly_results = get_anomaly_detector_registry().detect_many_sync(
+            [
+                {
+                    "context": "reasoning_output",
+                    "data": report,
+                    "metadata": {"agent_id": report.get("agent_id"), "domain": report.get("domain")},
+                }
+                for report in completed_reports
+            ]
+        )
+        flagged_anomalies = [result for result in anomaly_results if result.flagged]
+        if not flagged_anomalies:
+            for report in completed_reports:
+                get_anomaly_detector_registry().record_normal_sample("reasoning_output", report)
+
         critic_review = self._critic.evaluate(
             " ".join(report.get("summary", "") for report in results.values() if report.get("summary")),
             evidence,
         )
+        if flagged_anomalies:
+            debate_review = self._critic.debate_review(
+                " ".join(report.get("summary", "") for report in completed_reports),
+                evidence,
+            )
+            debate_review["anomaly_results"] = [result.to_dict() for result in flagged_anomalies]
+            critic_review = debate_review
         synthesized = self._synthesizer.synthesize(
             query,
-            [report for report in results.values() if report.get("status") == "completed"],
+            completed_reports,
             critic_review,
         )
 
@@ -530,6 +567,8 @@ class MultiAgentOrchestrator:
             "execution_ms": round((time.time() - start) * 1000, 2),
             "inference_budget_tokens": strategy["budget_tokens"],
             "agent_health": agent_health,
+            "anomaly_detection": [result.to_dict() for result in anomaly_results],
+            "debate_triggered": bool(flagged_anomalies),
         }
         return response
 

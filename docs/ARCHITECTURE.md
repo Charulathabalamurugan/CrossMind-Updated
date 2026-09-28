@@ -42,6 +42,7 @@ flowchart TB
         Ingestion["IngestionPipeline<br/>ingestion/pipeline.py"]
         Continuous["Continuous Ingestion<br/>ingestion/continuous_ingestion.py"]
         Feedback["Feedback / Retrainer / Rule Engine<br/>reasoning/feedback_collector.py, retrainer.py, rule_engine.py"]
+        Anomaly["Contextual Anomaly Detection<br/>anomaly_detection/"]
     end
 
     subgraph "Deployment & Observability"
@@ -74,6 +75,9 @@ flowchart TB
     Ingestion --> Qdrant
     Ingestion --> Redis
     Ingestion --> Embedding
+    Ingestion --> Anomaly
+    Pipeline --> Anomaly
+    Anomaly --> Qdrant
 
     Feedback --> Memory
     Feedback --> KG
@@ -90,6 +94,19 @@ flowchart TB
     Prometheus --> Observability
 ```
 
+Anomaly detection is evaluated at five registered contexts: document metadata
+and embeddings before vector upsert, query patterns before routing, agent output
+before synthesis, and scientific-discovery signals before candidate logging.
+Each context has an independent score threshold and downstream action. Detection
+results are cached by input and model version, emitted through Prometheus
+metrics, and recorded in the DLDB audit store. Known-normal observations from
+successful ingestion, ordinary retrieval, and accepted agent output are retained
+in bounded in-memory windows for periodic model refresh; historical samples can
+also be supplied explicitly through the detector registry's training API. Model
+artifacts belong in `anomaly_detection/models/`.
+Set `CROSSMIND_ANOMALY_MODEL_DIR` to use a writable persistent model volume in
+deployment.
+
 ## Component Status
 
 | Component | Location | Status | Notes |
@@ -102,6 +119,7 @@ flowchart TB
 | Services package | `services/` | **Structural** | Contains only `__init__.py`. Intended: service entry points. Current: implementations live in `ingestion/` and `reasoning/`. |
 | Reasoning layer | `reasoning/` (50+ files) | **Implemented** | Full neuro-symbolic pipeline, multi-agent, strategy routing, KG, validation, memory. |
 | Ingestion pipeline | `ingestion/` | **Implemented** | Document extraction, chunking, embedding, caching. |
+| Anomaly detection | `anomaly_detection/` | **Implemented** | Async context-aware detectors, registry, model-specific scoring, thresholds, audit and metrics. |
 | Vector store | `vector_store/` | **Implemented** | Qdrant client with in-memory fallback, BM25, vector adapter. |
 | Streamlit dashboard | `dashboard/app.py` | **Implemented** | 633-line authenticated dashboard with metrics and visualization. |
 | Kubernetes manifests | `kubernetes/` and `kubernetes/base/` | **Implemented** | Base manifests (deployment, service, ingress, HPA, PDB, networkpolicy, configmap, secret, SA, namespace) + loose manifests (autoscaling, ingress-https). Deploy via kustomize or `helm/crossmind/` chart. |

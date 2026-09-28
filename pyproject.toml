@@ -47,6 +47,7 @@ include = [
     "services*",
     "core*",
     "infra*",
+    "anomaly_detection*",
 ]
 exclude = ["tests*", "archive*"]
 

@@ -23,6 +23,7 @@ from reasoning.benchmark_collector import get_benchmark_collector
 from reasoning.feedback_collector import get_feedback_collector
 from reasoning.retrainer import get_model_retrainer
 from reasoning.rule_updater import get_rule_updater
+from anomaly_detection import get_anomaly_detector_registry
 
 logger = logging.getLogger("crossmind.ingestion")
 
@@ -69,6 +70,8 @@ class IngestionPipeline:
         self.feedback_collector = get_feedback_collector()
         self.model_retrainer = get_model_retrainer()
         self.rule_updater = get_rule_updater()
+        self.anomaly_detectors = get_anomaly_detector_registry()
+        self._last_anomaly_results: List[Dict[str, Any]] = []
 
     def auto_init(self):
         if self._initialized:
@@ -151,22 +154,61 @@ class IngestionPipeline:
             return []
 
         deduped: List[Dict[str, Any]] = []
+        self._last_anomaly_results = []
         for doc in documents:
-            cache_key = doc.get("content_hash") or str(hash(doc.get("content", "")))
+            prepared_doc = dict(doc)
+            prepared_doc["content"] = self._extract_document_content(doc)
+            prepared_doc["file_path"] = ""
+            metadata_result = self.anomaly_detectors.detect_sync(
+                "ingestion_metadata",
+                prepared_doc,
+            )
+            self._last_anomaly_results.append(metadata_result.to_dict())
+            if metadata_result.flagged:
+                logger.warning(
+                    "Document quarantined by metadata anomaly detection",
+                    extra={
+                        "document_id": doc.get("id"),
+                        "anomaly_score": metadata_result.score,
+                        "anomaly_input_hash": metadata_result.input_hash,
+                    },
+                )
+                continue
+            cache_key = prepared_doc.get("content_hash") or str(hash(prepared_doc.get("content", "")))
             if self.cache.get(cache_key):
                 continue
-            if not doc.get("content_hash"):
-                doc["content_hash"] = cache_key
-            deduped.append(doc)
-            self.cache.set(cache_key, True)
+            if not prepared_doc.get("content_hash"):
+                prepared_doc["content_hash"] = cache_key
+            deduped.append(prepared_doc)
 
         self.benchmark_collector.start_phase("ingestion")
         all_inserted_ids = []
         all_sparse_records = []
+        all_records_to_index = []
 
         for doc in deduped:
             chunks = self._chunk_and_embed(doc)
             if not chunks:
+                continue
+            embedding_results = self.anomaly_detectors.detect_many_sync(
+                [
+                    {
+                        "context": "ingestion_embedding",
+                        "data": chunk.get("vector", []),
+                        "metadata": {"document_id": doc.get("id"), "chunk_index": chunk.get("chunk_index")},
+                    }
+                    for chunk in chunks
+                ]
+            )
+            self._last_anomaly_results.extend(result.to_dict() for result in embedding_results)
+            if any(result.flagged for result in embedding_results):
+                logger.warning(
+                    "Document quarantined by embedding anomaly detection",
+                    extra={
+                        "document_id": doc.get("id"),
+                        "anomaly_scores": [result.score for result in embedding_results],
+                    },
+                )
                 continue
             records_to_upsert = []
             for chunk in chunks:
@@ -224,13 +266,17 @@ class IngestionPipeline:
 
             inserted_ids = self.vector_engine.upsert_vectors(records_to_upsert)
             all_inserted_ids.extend(inserted_ids)
+            all_records_to_index.extend(records_to_upsert)
             for record in records_to_upsert:
                 cache_key = record["payload"].get("content_hash") or str(hash(record["payload"].get("content", "")))
                 self.cache.set(cache_key, record["payload"])
+            self.anomaly_detectors.record_normal_sample("ingestion_metadata", doc)
+            for chunk in chunks:
+                self.anomaly_detectors.record_normal_sample("ingestion_embedding", chunk.get("vector", []))
 
         self.knowledge_graph.index_documents([
             {"id": r["payload"]["id"], "title": r["payload"]["title"], "content": r["payload"]["content"], "domain": r["payload"]["domain"]}
-            for r in records_to_upsert if r["payload"]
+            for r in all_records_to_index if r["payload"]
         ])
         self.sparse_engine.index_documents(all_sparse_records)
 
@@ -345,6 +391,10 @@ class IngestionPipeline:
             "rule_updater_stats": self.rule_updater.get_stats(),
             "rule_engine_log_size": len(self.rule_engine.get_log()),
             "sparse_engine_indexed_docs": self.sparse_engine.total_documents,
+            "anomaly_detection": {
+                "last_results": list(self._last_anomaly_results),
+                "registered_contexts": self.anomaly_detectors.contexts(),
+            },
         }
 
 _pipeline_instance = None
