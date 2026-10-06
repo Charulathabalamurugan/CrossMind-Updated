@@ -360,8 +360,8 @@ class StrategyEngine:
             budget_tokens = 6000
             selected = domains[:5] or ["energy", "finance", "climate"]
         else:
-            execution_mode = "fast"
-            budget_tokens = 1500
+            execution_mode = "deep"
+            budget_tokens = 6000
             selected = domains[:2] or ["general"]
 
         return {

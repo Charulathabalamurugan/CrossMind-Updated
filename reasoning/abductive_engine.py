@@ -124,7 +124,17 @@ class AbductiveReasoningEngine:
         
         # 2. Test and prune
         tested_candidates = self.prune_candidates(raw_candidates, post_validator, evidence)
-        
+        if not tested_candidates:
+            return {
+                "best_explanation": "No admissible abductive hypothesis could be generated from the available evidence.",
+                "causal_pathway": "Evidence unavailable -> Abductive fallback",
+                "imagined_scenario": "No candidate scenario was available; retain the evidence and request additional context.",
+                "candidate_proposals": [],
+                "abductive_score": 0.0,
+                "execution_time_ms": round((time.time() - start) * 1000, 2),
+                "fallback": True,
+            }
+
         # 3. Imagine best scenario
         best_candidate = self.simulate_imagination(tested_candidates[0])
         
@@ -136,5 +146,6 @@ class AbductiveReasoningEngine:
             "imagined_scenario": best_candidate["imagined_scenario"],
             "candidate_proposals": tested_candidates,
             "abductive_score": best_candidate["causal_score"],
-            "execution_time_ms": round(execution_time_ms, 2)
+            "execution_time_ms": round(execution_time_ms, 2),
+            "fallback": False,
         }

@@ -158,7 +158,7 @@ print(result)
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Then access the API at `http://localhost:8000` with endpoints `/api/query` (POST), `/api/ingest` (POST), `/api/stream_reasoning` (GET, SSE), `/v1/api/*` aliases, `/healthz`, `/metrics`, and `/docs`.
+Then access the API at `http://localhost:8000` with endpoints `/api/query` (POST), `/api/public-research/query` (POST), `/api/ingest` (POST), `/api/stream_reasoning` (GET, SSE), `/healthz`, `/metrics`, and `/docs`.
 
 ### Option D: Docker Compose (Full Stack)
 

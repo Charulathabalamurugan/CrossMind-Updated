@@ -227,7 +227,7 @@ helm install crossmind helm/crossmind
 
 **Helm chart includes**: Deployment, Service, Ingress, HPA, PDB, NetworkPolicy, ConfigMap, Secret, ServiceAccount, and helper templates.
 
-Both target the same API service which exposes `/api/query`, `/api/ingest`, `/api/stream_reasoning`, `/v1/api/*`, `/healthz`, `/metrics`, and auth endpoints.
+Both target the same API service which exposes `/api/query`, `/api/public-research/query`, `/api/ingest`, `/api/stream_reasoning`, `/healthz`, `/metrics`, and auth endpoints.
 
 **Prerequisites**:
 - Kubernetes cluster with GPU support (for vLLM)

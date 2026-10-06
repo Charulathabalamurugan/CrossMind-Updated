@@ -111,7 +111,7 @@ deployment.
 
 | Component | Location | Status | Notes |
 |-----------|----------|--------|-------|
-| FastAPI `app` object | `app/main.py` | **Implemented** | Full FastAPI app with `/api/query`, `/api/ingest`, `/api/stream_reasoning`, `/v1/api/*` aliases, auth, versioning, validation, streaming, metrics, health. 343 lines. |
+| FastAPI `app` object | `app/main.py` | **Implemented** | Full FastAPI app with canonical `/api/query`, `/api/public-research/query`, `/api/ingest`, and `/api/stream_reasoning` routes, auth, validation, streaming, metrics, and health. |
 | Observability | `app/observability.py` | **Implemented** | Prometheus metrics + OpenTelemetry with graceful fallback. |
 | Schemas | `app/schemas.py` | **Implemented** | Pydantic v2 models for requests/responses. |
 | Core package | `core/` | **Structural** | Contains only `__init__.py`. Intended: orchestration factories. Current: responsibilities live in `reasoning/`. |

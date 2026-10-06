@@ -19,6 +19,7 @@ from config import settings
 from app.observability import configure_logging, record_request, prometheus_payload
 from app.schemas import (
     QueryRequest,
+    PublicResearchQueryRequest,
     DocumentIngestRequest,
     LoginRequest,
     RefreshRequest,
@@ -27,6 +28,7 @@ from app.schemas import (
 )
 from reasoning.neuro_symbolic_pipeline import NeuroSymbolicPipeline, get_neuro_symbolic_pipeline
 from ingestion.pipeline import IngestionPipeline
+from ingestion.public_research import get_research_orchestrator
 from reasoning.auth_service import AuthService
 
 configure_logging()
@@ -191,6 +193,7 @@ def root():
         "version": settings.VERSION,
         "endpoints": {
             "query": "/api/query",
+            "public_research_query": "/api/public-research/query",
             "ingest": "/api/ingest",
             "stream": "/api/stream_reasoning",
             "health": "/healthz",
@@ -277,6 +280,28 @@ async def api_query(request: Request, body: QueryRequest):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.post("/api/public-research/query", tags=["Public Research"])
+async def api_public_research_query(request: Request, body: PublicResearchQueryRequest):
+    await get_current_user(request)
+    start = time.perf_counter()
+    try:
+        sanitized_query = _sanitize(body.query)
+        result = get_research_orchestrator().orchestrate(
+            query=sanitized_query,
+            max_results=body.max_results,
+            user_role=body.user_role,
+            session_id=body.session_id,
+        )
+        result["user_role"] = body.user_role
+        result["session_id"] = body.session_id
+        record_request("POST", "/api/public-research/query", 200, start)
+        return result
+    except Exception as exc:
+        record_request("POST", "/api/public-research/query", 500, start)
+        logger.error("Public research query failed", exc_info=exc)
+        raise HTTPException(status_code=500, detail="Public research query failed")
+
+
 @app.post("/api/ingest", tags=["Ingestion"])
 async def api_ingest(request: Request, body: DocumentIngestRequest):
     await get_current_user(request)
@@ -323,21 +348,6 @@ async def api_stream_reasoning(request: Request, query: str, user_role: str = "r
             yield f"data: {json.dumps({'event': 'error', 'data': {'detail': 'Internal server error'}})}\n\n"
     
     return StreamingResponse(generate(), media_type="text/event-stream")
-
-
-@app.post("/v1/api/query", tags=["Query"])
-async def v1_api_query(request: Request, body: QueryRequest):
-    return await api_query(request, body)
-
-
-@app.post("/v1/api/ingest", tags=["Ingestion"])
-async def v1_api_ingest(request: Request, body: DocumentIngestRequest):
-    return await api_ingest(request, body)
-
-
-@app.get("/v1/api/stream_reasoning", tags=["Streaming"])
-async def v1_api_stream_reasoning(request: Request, query: str, user_role: str = "researcher"):
-    return await api_stream_reasoning(request, query, user_role)
 
 
 __all__ = ["app"]

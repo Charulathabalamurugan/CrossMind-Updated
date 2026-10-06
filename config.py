@@ -88,7 +88,7 @@ class Settings(BaseSettings):
     BGE_M3_MAX_LENGTH: int = Field(default=8192, ge=1, le=100000)
     QDRANT_HOST: str = Field(default="localhost", min_length=1)
     QDRANT_PORT: int = Field(default=6333, ge=1, le=65535)
-    QDRANT_IN_MEMORY: bool = True
+    QDRANT_IN_MEMORY: bool = False
     QDRANT_COLLECTION_NAME: str = Field(default="crossmind_knowledge", min_length=1)
     PRODUCT_QUANTIZATION_ENABLED: bool = True
     DOMAIN_QDRANT_COLLECTIONS: bool = False

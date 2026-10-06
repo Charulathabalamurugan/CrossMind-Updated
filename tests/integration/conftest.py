@@ -98,9 +98,9 @@ def reset_singletons():
     dm._dual_memory = None
     qm._queue_manager_instance = None
     rm._routing_metrics = None
-    sl._unified_router = None
-    sl._quality_gate = None
-    sl._cost_controller = None
+    sl._router_instance = None
+    sl._quality_gate_instance = None
+    sl._cost_controller_instance = None
     ru._rule_updater = None
     rt._model_retrainer = None
     bc._benchmark_collector = None

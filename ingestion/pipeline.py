@@ -126,9 +126,11 @@ class IngestionPipeline:
         chunks = self.chunker.chunk_text(content, metadata=metadata)
         if not chunks:
             return []
+        document_id = doc.get("id") or str(uuid.uuid4())
         for chunk in chunks:
-            chunk["id"] = doc.get("id") or str(uuid.uuid4()) + f"_chunk_{chunk['chunk_index']}"
-            chunk["doc_id"] = doc.get("id") or str(uuid.uuid4())
+            chunk_index = int(chunk.get("chunk_index", 0))
+            chunk["id"] = f"{document_id}_chunk_{chunk_index}"
+            chunk["doc_id"] = document_id
             chunk["content_hash"] = doc.get("content_hash") or str(hash(content))
         texts = [c["text"] for c in chunks]
         search_dim = settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM
@@ -159,6 +161,9 @@ class IngestionPipeline:
             prepared_doc = dict(doc)
             prepared_doc["content"] = self._extract_document_content(doc)
             prepared_doc["file_path"] = ""
+            if not prepared_doc.get("content"):
+                logger.warning("Skipping document with no extracted content", extra={"document_id": doc.get("id")})
+                continue
             metadata_result = self.anomaly_detectors.detect_sync(
                 "ingestion_metadata",
                 prepared_doc,
@@ -247,7 +252,11 @@ class IngestionPipeline:
                     "authors": chunk.get("authors", doc.get("authors", [])),
                     "allowed_roles": chunk.get("allowed_roles", doc.get("allowed_roles", ["public", "researcher"])),
                     "tags": chunk.get("tags", doc.get("tags", [])),
-                    "citation": f"{doc.get('authors', ['CrossMind Research'])[0]} et al. ({doc.get('year', 2024)}) - {doc.get('title', 'Untitled')}",
+                    "citation": (
+                        f"{doc.get('authors', ['CrossMind Research'])[0]} et al. "
+                        if doc.get("authors")
+                        else "CrossMind Research"
+                    ) + f" ({doc.get('year', 2024)}) - {doc.get('title', 'Untitled')}",
                     "chunk_index": chunk.get("chunk_index", 0),
                     "content_hash": chunk.get("content_hash", ""),
                     "quality_score": q_score,

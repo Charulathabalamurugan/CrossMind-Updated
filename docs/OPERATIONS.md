@@ -6,7 +6,7 @@
 
 | Service | Implementation | Operational Notes |
 |---------|---------------|-------------------|
-| **FastAPI API Server** | `app/main.py` (343 lines) | Full FastAPI app with `/api/query`, `/api/ingest`, `/api/stream_reasoning`, `/v1/api/*` aliases, auth, versioning, validation, streaming, metrics, health. Exports `app` object. |
+| **FastAPI API Server** | `app/main.py` | Full FastAPI app with canonical `/api/query`, `/api/public-research/query`, `/api/ingest`, and `/api/stream_reasoning` routes, auth, validation, streaming, metrics, and health. Exports `app` object. |
 | **Reasoning Pipeline** | `reasoning/neuro_symbolic_pipeline.py` | Runnable directly via `NeuroSymbolicPipeline()` or through the API. Works end-to-end in tests (147 passed). |
 | **Ingestion Pipeline** | `ingestion/pipeline.py` | Runnable directly. Supports batch and continuous ingestion. |
 | **Vector Store** | `vector_store/qdrant_engine.py` | Qdrant client with in-memory fallback. No external Qdrant needed for local dev. |

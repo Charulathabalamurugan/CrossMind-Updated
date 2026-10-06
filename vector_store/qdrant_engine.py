@@ -126,13 +126,13 @@ class QdrantVectorEngine:
             logger.warning("qdrant-client not available. Operating in local memory fallback mode.")
             return
 
+        if settings.QDRANT_IN_MEMORY:
+            logger.info("QDRANT_IN_MEMORY enabled; operating in local memory fallback mode.")
+            return
+
         try:
-            if settings.QDRANT_IN_MEMORY:
-                logger.info("Initializing Qdrant Edge in-memory instance.")
-                self.client = QdrantClient(":memory:")
-            else:
-                logger.info(f"Connecting to Qdrant server at {settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
-                self.client = QdrantClient(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
+            logger.info(f"Connecting to Qdrant server at {settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
+            self.client = QdrantClient(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
 
             # Ensure collection exists
             collections = [c.name for c in self.client.get_collections().collections]
@@ -170,7 +170,7 @@ class QdrantVectorEngine:
                 )
                 logger.info("Collection created successfully with advanced vector config.")
         except Exception as e:
-            logger.warning(f"Failed to initialize Qdrant client ({e}). Reverting to memory storage.")
+            logger.error(f"Qdrant initialization failed ({e}). Operating in local memory fallback mode.")
             self.client = None
 
     def upsert_vectors(self, records: List[Dict[str, Any]]) -> List[str]:
@@ -267,7 +267,7 @@ class QdrantVectorEngine:
                 )
                 logger.info(f"Upserted {len(qdrant_points)} vectors into Qdrant collection '{self.collection_name}'")
             except Exception as e:
-                logger.error(f"Failed Qdrant upsert: {e}")
+                logger.error(f"Failed Qdrant upsert: {e}. Continuing with local memory store.")
 
         return ids
 

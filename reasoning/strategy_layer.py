@@ -45,41 +45,29 @@ class UnifiedRouter:
             return route
 
         classification = self.classifier.classify(query)
-        complexity = str(classification.get("complexity", "medium")).lower()
         query_type = str(classification.get("query_type", "factual")).lower()
         domain = str(classification.get("predicted_domain", "general")).lower()
 
-        if complexity in {"low", "factual"}:
-            execution_mode = "fast"
-            retrieval_mode = "optimized_simple_vector"
-            budget_tokens = 1500
-            requires_multi_agent = False
-            model = settings.LITELLM_MODEL_NAME if settings.LITELLM_ENABLED else "lite"
-        elif complexity == "medium":
-            execution_mode = "medium"
-            retrieval_mode = "hybrid_rag_kg"
-            budget_tokens = 3500
-            requires_multi_agent = settings.MULTI_AGENT_ENABLED
-            model = settings.ZAYA1B_MODEL_NAME if settings.ZAYA1B_ENABLED else settings.LITELLM_MODEL_NAME
-        else:
-            execution_mode = "deep"
-            retrieval_mode = "hybrid_rag_kg"
-            budget_tokens = 6000
-            requires_multi_agent = settings.MULTI_AGENT_ENABLED
-            model = settings.ZAYA1_8B_MODEL_NAME
+        # Deep reasoning is the only supported execution strategy. Classification
+        # remains useful for evidence selection, but it cannot bypass the deep path.
+        execution_mode = "deep"
+        retrieval_mode = "hybrid_rag_kg"
+        budget_tokens = 6000
+        requires_multi_agent = settings.MULTI_AGENT_ENABLED
+        model = settings.ZAYA1_8B_MODEL_NAME
 
         route = {
             "query": query,
             "predicted_domain": domain,
             "query_type": query_type,
-            "complexity": complexity,
+            "complexity": str(classification.get("complexity", "high")),
             "confidence": float(classification.get("confidence", 0.0)),
             "execution_mode": execution_mode,
             "model": model,
             "retrieval_strategy": retrieval_mode,
-            "agent_count": 1 if execution_mode == "fast" else 3,
+            "agent_count": 3,
             "requires_multi_agent": requires_multi_agent,
-            "requires_graph_rag": execution_mode in {"medium", "deep"},
+            "requires_graph_rag": True,
             "budget_tokens": budget_tokens,
             "budget_cost_estimate": round(budget_tokens * 0.0004, 4),
             "selected_agents": [domain] if domain != "general" else ["general"],
@@ -163,13 +151,15 @@ class CostController:
         self._total_cost += record["estimated_cost"]
         return dict(record)
 
-    def enforce_budget(self, query_cost: float, max_cost: float = 0.25) -> Dict[str, Any]:
-        within_budget = query_cost <= max_cost
+    def enforce_budget(self, query_cost: float, max_cost: float = 2.4) -> Dict[str, Any]:
+        cost = max(0.0, float(query_cost))
+        budget = max(0.0, float(max_cost))
+        within_budget = self._total_cost <= budget
         return {
             "within_budget": within_budget,
-            "max_budget": max_cost,
-            "current_cost": round(float(query_cost), 4),
-            "remaining_budget": round(max(0.0, max_cost - query_cost), 4),
+            "max_budget": round(budget, 4),
+            "current_cost": round(self._total_cost, 4),
+            "remaining_budget": round(max(0.0, budget - self._total_cost), 4),
             "decision": "approved" if within_budget else "blocked",
         }
 

@@ -106,7 +106,19 @@ docker compose up -d
 helm install crossmind helm/crossmind
 ```
 
-The FastAPI app in [app/main.py](app/main.py) exports the following endpoints: `/api/query`, `/api/ingest`, `/api/stream_reasoning`, `/v1/api/*` aliases, `/healthz`, `/metrics`, `/auth/login`, `/auth/refresh`, `/auth/users`, and `/`. All endpoints support Bearer-token authentication (except health and metrics). The API includes versioning headers, request validation via Pydantic schemas, Server-Sent Events streaming, Prometheus metrics, and OpenAPI documentation at `/docs`.
+The FastAPI app in [app/main.py](app/main.py) exports the canonical endpoints `/api/query`, `/api/public-research/query`, `/api/ingest`, `/api/stream_reasoning`, `/healthz`, `/metrics`, `/auth/login`, `/auth/refresh`, `/auth/users`, and `/`. The redundant `/v1/api/*` aliases were removed. All endpoints support Bearer-token authentication except health and metrics. The API includes request validation via Pydantic schemas, Server-Sent Events streaming, Prometheus metrics, and OpenAPI documentation at `/docs`.
+
+### Public research API
+
+`POST /api/public-research/query` accepts a validated query, optional `max_results` (1-20), `user_role`, and `session_id`. The typed sequence is:
+
+1. QueryRouter selects a public provider and normalized keyword terms.
+2. The provider adapter searches Europe PMC, PubMed, OpenAlex, arXiv, or Semantic Scholar without requiring an API key.
+3. Normalized records are ingested into the document pipeline.
+4. The retrieved evidence and graph context enter the neuro-symbolic pipeline.
+5. UnifiedRouter always selects `execution_mode: deep`, hybrid RAG-KG retrieval, three agents, graph RAG, and a 6000-token budget.
+
+Provider failures are isolated and logged; successful results are preserved. Generic document ingestion remains available through `/api/ingest`, and document records may contain arbitrary public or researcher-visible metadata while enforcing explicit content and size limits.
 
 ## Important runtime notes
 
@@ -117,7 +129,7 @@ The FastAPI app in [app/main.py](app/main.py) exports the following endpoints: `
 
 ## Validation status
 
-The project has been validated in the current workspace with the real test suite. The verified suite currently passes with 147 passing tests, no failures, no errors.
+The focused public research suite passes all 7 tests. The full suite is currently blocked by existing persistent-Qdrant test configuration: tests that patch the client still initialize Qdrant with `QDRANT_IN_MEMORY=True`, which the production workflow rejects. Run the repository test command after configuring a persistent Qdrant service or the test environment's in-memory override.
 
 ```bash
 python -m pytest tests

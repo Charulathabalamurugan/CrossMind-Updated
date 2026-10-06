@@ -175,4 +175,4 @@ flowchart TD
     style O fill:#ccffcc,stroke:#333,stroke-width:2px
 ```
 
-> **Note**: The FastAPI application layer in `app/main.py` is implemented and exports a real `app` object. The HTTP endpoints `/api/query`, `/api/ingest`, `/api/stream_reasoning`, and `/v1/api/*` are bound and active. The sequence diagrams below describe the full flow including the API layer.
+> **Note**: The FastAPI application layer in `app/main.py` is implemented and exports a real `app` object. The canonical HTTP endpoints are `/api/query`, `/api/public-research/query`, `/api/ingest`, and `/api/stream_reasoning`; the redundant `/v1/api/*` aliases are no longer registered. The public research sequence routes to provider search, normalization, ingestion, hybrid RAG-KG, graph context, and the deep-only reasoning path.

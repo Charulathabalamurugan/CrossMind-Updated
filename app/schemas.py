@@ -78,6 +78,22 @@ class QueryRequest(StrictModel):
         return self
 
 
+class PublicResearchQueryRequest(StrictModel):
+    query: str = Field(..., min_length=1, max_length=settings.MAX_QUERY_LENGTH)
+    max_results: int = Field(default=5, ge=1, le=20)
+    user_role: Role = "researcher"
+    session_id: str = Field(default="public-research", min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$")
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, value: str) -> str:
+        if any(ord(char) < 32 and char not in "\n\r\t" for char in value):
+            raise ValueError("Control characters are not allowed")
+        if not value.strip():
+            raise ValueError("Query cannot be empty")
+        return value
+
+
 class StreamQueryRequest(StrictModel):
     query: str = Field(..., min_length=1, max_length=settings.MAX_QUERY_LENGTH)
     user_role: Role = "researcher"

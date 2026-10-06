@@ -151,7 +151,7 @@ class ContextualAnomalyDetector(BaseDetector):
         confidence = 0.65
 
         with self._lock:
-            if self._model is not None:
+            if self._model is not None and heuristic < 1.0:
                 model_score = self._score_with_model(vector)
                 score = max(heuristic * 0.65, model_score)
                 model_used = f"{self.config['model']}:v{self._model_version}"

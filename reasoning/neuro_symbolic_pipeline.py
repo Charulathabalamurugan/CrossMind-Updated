@@ -353,7 +353,7 @@ class NeuroSymbolicPipeline:
         filter_metadata["reasoning_model"] = route["model"]
         if route.get("anomaly_forced_deep_path"):
             classification["complexity"] = "high"
-        is_simple_query = route["execution_mode"] == "fast"
+        is_simple_query = False
         cost_record = self.cost_controller.track_query(query, route["execution_mode"], route["budget_tokens"], route["budget_cost_estimate"])
         filter_metadata["cost_record"] = cost_record
 
@@ -505,7 +505,7 @@ class NeuroSymbolicPipeline:
             result["cross_domain_scoring"].get("overall_score", 0.0),
         )
         result["quality_gate"] = gate_result
-        result["budget_control"] = self.cost_controller.enforce_budget(route["budget_cost_estimate"], max_cost=0.25)
+        result["budget_control"] = self.cost_controller.enforce_budget(route["budget_cost_estimate"], max_cost=2.4)
         filter_metadata["quality_gate"] = gate_result
         filter_metadata["budget_control"] = result["budget_control"]
 
@@ -659,7 +659,7 @@ class NeuroSymbolicPipeline:
             classification["complexity"] = "high"
         filter_metadata["query_classification"] = classification
         filter_metadata["unified_route"] = route
-        is_simple_query = route["execution_mode"] == "fast"
+        is_simple_query = False
         filter_metadata["retrieval_strategy"] = route["retrieval_strategy"]
 
         evt1 = {"event": "step_3a_pre_filter", "data": filter_metadata}
