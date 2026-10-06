@@ -1,6 +1,6 @@
 import time
 import logging
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, Generator, List, Optional, Tuple
 from config import settings
 import diskcache as dc
 
@@ -27,6 +27,7 @@ from reasoning.deforest_vis import DeforestVIS
 from reasoning.wfa_fast_path import get_wfa_engine
 from reasoning.semara_reasoner import SemaraReasoner
 from reasoning.query_classifier import get_query_classifier
+from reasoning.tool_registry import default_tool_registry
 from reasoning.routing_metrics import get_routing_metrics
 from reasoning.strategy_layer import get_unified_router, get_quality_gate, get_cost_controller
 from anomaly_detection import get_anomaly_detector_registry
@@ -86,6 +87,11 @@ class NeuroSymbolicPipeline:
         self.deforest_vis = DeforestVIS(port=settings.DEFORESTVIS_PORT) if settings.DEFORESTVIS_ENABLED else None
         # DiskCache for persistent query caching
         self.disk_cache = dc.Cache(settings.DISK_CACHE_PATH) if settings.DISK_CACHE_ENABLED else None
+
+        # Static, one-way tool registry: the agent orchestrator dispatches
+        # retrieval/generation/verification/anomaly through self.tools.invoke,
+        # and tools never call back into the orchestrator.
+        self.tools = default_tool_registry(self)
 
     def _enrich_result(
         self,
@@ -297,6 +303,93 @@ class NeuroSymbolicPipeline:
             "confidence_score": 0.75,
         }
 
+    def _retrieve_evidence(
+        self,
+        query: str,
+        user_role: str,
+        allowed_domains: List[str],
+        top_k: int = 5,
+        filter_metadata: Optional[Dict[str, Any]] = None,
+        is_simple_query: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """One-way 'retrieve_hybrid' tool: hybrid RAG-KG or vector-fallback retrieval."""
+        if filter_metadata is None:
+            filter_metadata = {}
+        if settings.MULTI_AGENT_ENABLED and not is_simple_query:
+            hybrid_result = self.hybrid_rag.retrieve(
+                query=query,
+                user_role=user_role,
+                allowed_domains=allowed_domains,
+                top_k=top_k,
+            )
+            retrieved_evidence = hybrid_result.get("fused_results", [])
+            filter_metadata["retrieval_strategy"] = hybrid_result.get("strategy", "hybrid_rag_kg")
+        else:
+            query_vector = self.embedder.embed_text(
+                query,
+                dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM,
+            )
+            normalized_query = self.adapter.normalize(
+                query_vector,
+                force_dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM,
+            )
+            retrieved_evidence = self.vector_engine.search_with_rbac(
+                query_vector=normalized_query.get("flat_vector", query_vector),
+                user_role=user_role,
+                allowed_domains=allowed_domains,
+                top_k=top_k,
+                query_text=query,
+            )
+            filter_metadata["retrieval_strategy"] = "optimized_simple_vector" if is_simple_query else "standard_vector"
+        return retrieved_evidence
+
+    def _generate_reasoning(
+        self,
+        query: str,
+        retrieved_evidence: List[Dict[str, Any]],
+        filter_metadata: Dict[str, Any],
+        graph_context: Dict[str, Any],
+        classification: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Dict[str, Any], float]:
+        """One-way 'generate' tool: route the reasoning model and apply fallbacks."""
+        start_reasoning = time.time()
+        routing_mode = self._route_reasoning_model((classification or {}).get("complexity", "high"))
+        try:
+            if settings.LITELLM_ENABLED and (routing_mode == "lite_llm" or not settings.ZAYA1_8B_REASONING_ENABLED):
+                agent_result = self._lite_llm_reasoning(
+                    query, retrieved_evidence, filter_metadata, graph_context
+                )
+                filter_metadata["reasoning_model"] = settings.LITELLM_MODEL_NAME
+            elif settings.ZAYA1B_ENABLED and routing_mode == "zaya1b":
+                agent_result = self._lite_llm_reasoning(
+                    query, retrieved_evidence, filter_metadata, graph_context
+                )
+                filter_metadata["reasoning_model"] = settings.ZAYA1B_MODEL_NAME
+            else:
+                agent_result = self.agent.reason_and_synthesize(
+                    query, retrieved_evidence, filter_metadata, graph_context
+                )
+                filter_metadata["reasoning_model"] = self.agent.model_name
+        except Exception as exc:
+            logger.warning("Reasoning agent failed; using fallback: %s", exc)
+            if settings.LITELLM_ENABLED:
+                agent_result = self._lite_llm_reasoning(
+                    query, retrieved_evidence, filter_metadata, graph_context
+                )
+                filter_metadata["reasoning_model"] = settings.LITELLM_MODEL_NAME
+            else:
+                agent_result = {
+                    "model": "deterministic-fallback",
+                    "think_block": "Reasoning agent unavailable; generated bounded fallback.",
+                    "tool_calls": [],
+                    "output_text": "Reasoning service unavailable.",
+                    "hypothesis": "Reasoning service unavailable.",
+                    "cited_evidence_ids": [ev.get("id") for ev in retrieved_evidence[:3]],
+                    "confidence_score": 0.0,
+                }
+        agent_time_s = round(time.time() - start_reasoning, 2)
+        return agent_result, agent_time_s
+
     def process_query(
         self,
         query: str,
@@ -304,10 +397,11 @@ class NeuroSymbolicPipeline:
         confidence_thresholds: Dict[str, float] = None,
         session_id: str = "default",
     ) -> Dict[str, Any]:
-        query_anomaly = self.anomaly_detectors.detect_sync(
-            "retrieval_query",
-            query,
-            {"session_id": session_id},
+        query_anomaly = self.tools.invoke(
+            "check_anomaly",
+            context="retrieval_query",
+            data=query,
+            metadata={"session_id": session_id},
         )
         cache_key = (
             query,
@@ -358,26 +452,15 @@ class NeuroSymbolicPipeline:
         filter_metadata["cost_record"] = cost_record
 
         # Step 2: Retrieval (Hybrid RAG-KG or standard) with Conditional Retrieval Optimization
-        if settings.MULTI_AGENT_ENABLED and not is_simple_query:
-            hybrid_result = self.hybrid_rag.retrieve(
-                query=query,
-                user_role=user_role,
-                allowed_domains=filter_metadata["detected_domains"],
-                top_k=5,
-            )
-            retrieved_evidence = hybrid_result.get("fused_results", [])
-            filter_metadata["retrieval_strategy"] = hybrid_result.get("strategy", "hybrid_rag_kg")
-        else:
-            query_vector = self.embedder.embed_text(query, dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM)
-            normalized_query = self.adapter.normalize(query_vector, force_dim=settings.BGE_M3_RETRIEVAL_DIM if settings.BGE_M3_MATRYOSHKA_ENABLED else settings.EMBEDDING_DIM)
-            retrieved_evidence = self.vector_engine.search_with_rbac(
-                query_vector=normalized_query.get("flat_vector", query_vector),
-                user_role=user_role,
-                allowed_domains=filter_metadata["detected_domains"],
-                top_k=5,
-                query_text=query,
-            )
-            filter_metadata["retrieval_strategy"] = "optimized_simple_vector" if is_simple_query else "standard_vector"
+        retrieved_evidence = self.tools.invoke(
+            "retrieve_hybrid",
+            query=query,
+            user_role=user_role,
+            allowed_domains=filter_metadata["detected_domains"],
+            top_k=5,
+            filter_metadata=filter_metadata,
+            is_simple_query=is_simple_query,
+        )
 
         # Compress retrieved evidence for reasoning context
         retrieved_evidence = self._compress_evidence_context(query, retrieved_evidence)
@@ -390,53 +473,25 @@ class NeuroSymbolicPipeline:
             )
 
         # Step 3b: Reasoning Model Routing
-        start_reasoning = time.time()
-        graph_seed_context = self.knowledge_graph.graph_rag_context(
-            retrieved_evidence, filter_metadata.get("extracted_entities", [])
+        graph_seed_context = self.tools.invoke(
+            "retrieve_graph",
+            retrieved_evidence=retrieved_evidence,
+            query_entities=filter_metadata.get("extracted_entities", []),
         )
-        routing_mode = self._route_reasoning_model(classification["complexity"])
-        try:
-            if settings.LITELLM_ENABLED and (
-                routing_mode == "lite_llm"
-                or not settings.ZAYA1_8B_REASONING_ENABLED
-            ):
-                agent_result = self._lite_llm_reasoning(
-                    query, retrieved_evidence, filter_metadata, graph_seed_context
-                )
-                filter_metadata["reasoning_model"] = settings.LITELLM_MODEL_NAME
-            elif settings.ZAYA1B_ENABLED and routing_mode == "zaya1b":
-                agent_result = self._lite_llm_reasoning(
-                    query, retrieved_evidence, filter_metadata, graph_seed_context
-                )
-                filter_metadata["reasoning_model"] = settings.ZAYA1B_MODEL_NAME
-            else:
-                agent_result = self.agent.reason_and_synthesize(
-                    query, retrieved_evidence, filter_metadata, graph_seed_context
-                )
-                filter_metadata["reasoning_model"] = self.agent.model_name
-        except Exception as exc:
-            logger.warning("Reasoning agent failed; using fallback: %s", exc)
-            if settings.LITELLM_ENABLED:
-                agent_result = self._lite_llm_reasoning(
-                    query, retrieved_evidence, filter_metadata, graph_seed_context
-                )
-                filter_metadata["reasoning_model"] = settings.LITELLM_MODEL_NAME
-            else:
-                agent_result = {
-                    "model": "deterministic-fallback",
-                    "think_block": "Reasoning agent unavailable; generated bounded fallback.",
-                    "tool_calls": [],
-                    "output_text": "Reasoning service unavailable.",
-                    "hypothesis": "Reasoning service unavailable.",
-                    "cited_evidence_ids": [ev.get("id") for ev in retrieved_evidence[:3]],
-                    "confidence_score": 0.0,
-                }
-        agent_time_s = round(time.time() - start_reasoning, 2)
+        agent_result, agent_time_s = self.tools.invoke(
+            "generate",
+            query=query,
+            retrieved_evidence=retrieved_evidence,
+            filter_metadata=filter_metadata,
+            graph_context=graph_seed_context,
+            classification=classification,
+        )
 
-        reasoning_anomaly = self.anomaly_detectors.detect_sync(
-            "reasoning_output",
-            agent_result,
-            {"query_hash": query_anomaly.input_hash},
+        reasoning_anomaly = self.tools.invoke(
+            "check_anomaly",
+            context="reasoning_output",
+            data=agent_result,
+            metadata={"query_hash": query_anomaly.input_hash},
         )
         filter_metadata["reasoning_anomaly"] = reasoning_anomaly.to_dict()
         if reasoning_anomaly.flagged:
@@ -462,11 +517,11 @@ class NeuroSymbolicPipeline:
         )
 
         # Z3 formal validation
-        z3_validation = None
-        if settings.Z3_VALIDATION_ENABLED:
-            z3_validation = self.z3_validator.validate_hypothesis(
-                agent_result, retrieved_evidence
-            )
+        z3_validation = self.tools.invoke(
+            "verify_symbolic",
+            agent_result=agent_result,
+            retrieved_evidence=retrieved_evidence,
+        )
 
         # Abductive Reasoning
         abductive_result = self.abductive_engine.perform_abductive_reasoning(
@@ -623,10 +678,11 @@ class NeuroSymbolicPipeline:
     def stream_query(
         self, query: str, user_role: str = "researcher", session_id: str = "default"
     ) -> Generator[Dict[str, Any], None, None]:
-        query_anomaly = self.anomaly_detectors.detect_sync(
-            "retrieval_query",
-            query,
-            {"session_id": session_id},
+        query_anomaly = self.tools.invoke(
+            "check_anomaly",
+            context="retrieval_query",
+            data=query,
+            metadata={"session_id": session_id},
         )
         cache_key = (query, user_role, session_id)
         if cache_key in self._cache and not query_anomaly.flagged:
@@ -699,8 +755,10 @@ class NeuroSymbolicPipeline:
         yield evt2
 
         agent_result = None
-        graph_seed_context = self.knowledge_graph.graph_rag_context(
-            retrieved_evidence, filter_metadata.get("extracted_entities", [])
+        graph_seed_context = self.tools.invoke(
+            "retrieve_graph",
+            retrieved_evidence=retrieved_evidence,
+            query_entities=filter_metadata.get("extracted_entities", []),
         )
         for stream_chunk in self.agent.stream_reasoning(
             query, retrieved_evidence, filter_metadata, graph_seed_context
@@ -719,10 +777,11 @@ class NeuroSymbolicPipeline:
                 query, retrieved_evidence, filter_metadata, graph_seed_context
             )
 
-        reasoning_anomaly = self.anomaly_detectors.detect_sync(
-            "reasoning_output",
-            agent_result,
-            {"query_hash": query_anomaly.input_hash},
+        reasoning_anomaly = self.tools.invoke(
+            "check_anomaly",
+            context="reasoning_output",
+            data=agent_result,
+            metadata={"query_hash": query_anomaly.input_hash},
         )
         filter_metadata["reasoning_anomaly"] = reasoning_anomaly.to_dict()
         if reasoning_anomaly.flagged:

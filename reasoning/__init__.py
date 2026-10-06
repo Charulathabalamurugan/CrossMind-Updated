@@ -61,6 +61,9 @@ __all__ = [
     "CalibrationConfig",
     "CalibrationResult",
     "ConfidenceCalibrator",
+    "ToolRegistry",
+    "default_tool_registry",
+    "TOOL_SPEC",
 ]
 
 
@@ -319,3 +322,9 @@ from reasoning.calibration import (
     CalibrationResult,
     ConfidenceCalibrator,
 )
+from reasoning.tool_registry import ToolRegistry, TOOL_SPEC, default_tool_registry
+
+
+def get_tool_registry(pipeline):
+    """Lazy accessor for the canonical one-way tool registry bound to a pipeline."""
+    return default_tool_registry(pipeline)

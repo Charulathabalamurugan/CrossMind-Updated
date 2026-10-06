@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+import os
 import re
 from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urlencode
@@ -41,6 +43,32 @@ def extract_keywords(query: str) -> List[str]:
     return keywords
 
 
+_BIOLOGICAL_TERMS = (
+    "protein", "gene", "disease", "clinical", "biomedical", "medical", "parkinson",
+    "cancer", "tumor", "neuroscience", "genomics", "proteomics", "pathway",
+)
+
+
+def _infer_domain(text: str) -> str:
+    lowered = text.lower()
+    if any(term in lowered for term in _BIOLOGICAL_TERMS):
+        return "biomedical"
+    if any(term in lowered for term in ("materials", "crystal", "compound", "chemistry", "polymer")):
+        return "materials"
+    return "general"
+
+
+def _crossref_year(published: Any) -> int:
+    if isinstance(published, dict):
+        date_parts = published.get("date-parts") or []
+        if date_parts and date_parts[0]:
+            try:
+                return int(date_parts[0][0])
+            except (ValueError, TypeError, IndexError):
+                return 2024
+    return 2024
+
+
 class QueryRouter:
     """Select public research APIs from query semantics without API keys."""
 
@@ -53,13 +81,13 @@ class QueryRouter:
 
         if any(term in text for term in bio_terms):
             primary = "europe_pmc"
-            secondary = ["pubmed", "openalex"]
+            secondary = ["pubmed", "openalex", "crossref", "unpaywall"]
         elif any(term in text for term in physics_terms) or any(term in text for term in computational_terms):
             primary = "arxiv"
-            secondary = ["openalex", "semantic_scholar"]
+            secondary = ["openalex", "semantic_scholar", "materials_project"]
         else:
             primary = "openalex"
-            secondary = ["europe_pmc", "semantic_scholar"]
+            secondary = ["europe_pmc", "semantic_scholar", "crossref", "unpaywall"]
 
         return {
             "primary": primary,
@@ -292,6 +320,204 @@ def _parse_arxiv_entries(xml: str, source: str) -> List[Dict[str, Any]]:
     return entries
 
 
+class CrossrefProvider(Provider):
+    """Crossref /works search; no API key required for unauthenticated queries."""
+
+    def __init__(self, timeout: float = 10.0):
+        super().__init__("crossref", "https://api.crossref.org/works", timeout)
+
+    def build_search_request(self, query: str, rows: int = 10) -> Dict[str, Any]:
+        return {
+            "method": "GET",
+            "url": self.base_url,
+            "params": {
+                "query": query,
+                "rows": rows,
+                "select": "dois,title,abstract,author,published,URL,type",
+            },
+        }
+
+    def search(self, query: str, max_results: int = 5) -> List[Dict[str, Any]]:
+        request = self.build_search_request(query, rows=max_results)
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.get(request["url"], params=request["params"])
+            response.raise_for_status()
+            payload = response.json()
+        message = payload.get("message", {}) if payload else {}
+        items = message.get("items", [])
+        return [normalize_crossref_result(item, source=self.name) for item in items[:max_results]]
+
+
+def normalize_crossref_result(item: Dict[str, Any], source: str) -> Dict[str, Any]:
+    titles = item.get("title")
+    if isinstance(titles, list) and titles:
+        title = str(titles[0])
+    elif isinstance(titles, str):
+        title = titles
+    else:
+        title = "Untitled work"
+    authors = []
+    for author in item.get("author", []):
+        given = (author.get("given") or "").strip()
+        family = (author.get("family") or "").strip()
+        name = " ".join(part for part in (given, family) if part)
+        if name:
+            authors.append(name)
+    abstract = str(item.get("abstract", "") or "").strip()
+    content = _decode_xml(abstract) if abstract else title
+    year = _crossref_year(item.get("published"))
+    domain = _infer_domain(f"{title} {abstract}")
+    type_label = str(item.get("type", "") or "")
+    return {
+        "id": str(item.get("DOI", "")),
+        "title": title,
+        "content": content,
+        "domain": domain,
+        "year": year,
+        "authors": authors,
+        "tags": ["crossref", type_label] if type_label else ["crossref"],
+        "allowed_roles": ["public", "researcher"],
+        "source": source,
+        "metadata": {
+            "doi": item.get("DOI"),
+            "url": item.get("URL") or item.get("url"),
+            "type": type_label,
+        },
+    }
+
+
+class UnpaywallProvider(Provider):
+    """Unpaywall free-full-text resolver keyed by DOI; resolves DOIs via Crossref."""
+
+    def __init__(
+        self,
+        timeout: float = 10.0,
+        email: Optional[str] = None,
+        crossref_provider: Optional[CrossrefProvider] = None,
+    ):
+        super().__init__("unpaywall", "https://api.unpaywall.org/v2", timeout)
+        self.email = email or os.environ.get("UNPAYWALL_EMAIL", "crossmind@example.org")
+        self._crossref = crossref_provider or CrossrefProvider(timeout=self.timeout)
+
+    def build_lookup_request(self, doi: str) -> Dict[str, Any]:
+        return {
+            "method": "GET",
+            "url": f"{self.base_url}/{doi}",
+            "params": {"mailto": self.email, "format": "json"},
+        }
+
+    def search(self, query: str, max_results: int = 5) -> List[Dict[str, Any]]:
+        documents: List[Dict[str, Any]] = []
+        crossref_docs = self._crossref.search(query, max_results=max_results)
+        seen_dois: set = set()
+        with httpx.Client(timeout=self.timeout, follow_redirects=True) as client:
+            for doc in crossref_docs:
+                doi = (doc.get("metadata") or {}).get("doi")
+                if not doi or doi in seen_dois:
+                    continue
+                seen_dois.add(doi)
+                try:
+                    request = self.build_lookup_request(doi)
+                    response = client.get(request["url"], params=request["params"])
+                    response.raise_for_status()
+                    payload = response.json()
+                except Exception as exc:
+                    logger.warning("Unpaywall lookup failed for DOI %s: %s", doi, exc)
+                    continue
+                documents.append(normalize_unpaywall_result(payload, source=self.name))
+                if len(documents) >= max_results:
+                    break
+        return documents
+
+
+def normalize_unpaywall_result(item: Dict[str, Any], source: str) -> Dict[str, Any]:
+    doi = str(item.get("doi", "") or "")
+    title = str(item.get("title") or "Untitled work")
+    oa_url = ""
+    license_url = ""
+    for location in item.get("oa_locations", []) or []:
+        if not oa_url:
+            url = location.get("url") or location.get("url_for_pdf")
+            if url:
+                oa_url = str(url)
+        if not license_url:
+            license_url = str(location.get("license") or location.get("license_url") or "")
+    oa_status = str(item.get("oa_status", "") or "")
+    tags = ["unpaywall", "open_access"]
+    if oa_status:
+        tags.append(oa_status)
+    description = title
+    if oa_url:
+        description += f"\nOpen-access source: {oa_url}"
+    return {
+        "id": doi or f"unpaywall:{str(item.get('paper_id', ''))}",
+        "title": title,
+        "content": description,
+        "domain": "general",
+        "year": _parse_year(item.get("year")),
+        "authors": [],
+        "tags": tags,
+        "allowed_roles": ["public", "researcher"],
+        "source": source,
+        "metadata": {"doi": doi, "oa_url": oa_url, "license": license_url},
+    }
+
+
+class MaterialsProjectProvider(Provider):
+    """Materials Project materials search; requires MATERIALS_PROJECT_API_KEY."""
+
+    def __init__(self, timeout: float = 30.0):
+        super().__init__("materials_project", "https://api.materialsproject.org/v1", timeout)
+        self.api_key = os.environ.get("MATERIALS_PROJECT_API_KEY", "")
+
+    def build_search_request(self, query: str) -> Dict[str, Any]:
+        return {
+            "method": "POST",
+            "url": f"{self.base_url}/summary/search",
+            "headers": {"X-API-KEY": self.api_key, "Content-Type": "application/json"},
+            "json": {
+                "criteria": {"description": {"$regex": query}},
+                "fields": ["material_id", "pretty_formula", "formation_energy_per_atom"],
+            },
+        }
+
+    def search(self, query: str, max_results: int = 5) -> List[Dict[str, Any]]:
+        if not self.api_key:
+            raise RuntimeError("Materials Project API key is required (set MATERIALS_PROJECT_API_KEY)")
+        request = self.build_search_request(query)
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.post(
+                request["url"], headers=request["headers"], json=request["json"]
+            )
+            response.raise_for_status()
+            payload = response.json()
+        raw_docs = payload.get("data", [])
+        return [normalize_materials_project_result(item, source=self.name) for item in raw_docs[:max_results]]
+
+
+def normalize_materials_project_result(item: Dict[str, Any], source: str) -> Dict[str, Any]:
+    material_id = str(item.get("material_id", ""))
+    formula = (str(item.get("pretty_formula", "") or "").strip()) or "Unknown"
+    energy = item.get("formation_energy_per_atom")
+    content = f"Material {formula} ({material_id}) with formation energy {energy} eV/atom."
+    return {
+        "id": material_id,
+        "title": f"Materials Project: {formula} ({material_id})",
+        "content": content,
+        "domain": "materials",
+        "year": 2024,
+        "authors": [],
+        "tags": ["materials_project", "materials"],
+        "allowed_roles": ["public", "researcher"],
+        "source": source,
+        "metadata": {
+            "material_id": material_id,
+            "formula": formula,
+            "properties": {"formation_energy_per_atom": energy},
+        },
+    }
+
+
 class ResearchOrchestrator:
     """Search public literature, ingest normalized records, then run CrossMind."""
 
@@ -303,6 +529,9 @@ class ResearchOrchestrator:
             "openalex": OpenAlexProvider(),
             "arxiv": ArxivProvider(),
             "semantic_scholar": SemanticScholarProvider(),
+            "crossref": CrossrefProvider(),
+            "unpaywall": UnpaywallProvider(),
+            "materials_project": MaterialsProjectProvider(),
         }
 
     def search(self, query: str, max_results: int = 5) -> Dict[str, Any]:
@@ -360,13 +589,19 @@ def get_research_orchestrator() -> ResearchOrchestrator:
 
 __all__ = [
     "ArxivProvider",
+    "CrossrefProvider",
     "EuropePMCProvider",
+    "MaterialsProjectProvider",
     "OpenAlexProvider",
     "PubMedProvider",
     "QueryRouter",
     "ResearchOrchestrator",
     "SemanticScholarProvider",
+    "UnpaywallProvider",
     "extract_keywords",
     "get_research_orchestrator",
+    "normalize_crossref_result",
     "normalize_europe_pmc_result",
+    "normalize_materials_project_result",
+    "normalize_unpaywall_result",
 ]
